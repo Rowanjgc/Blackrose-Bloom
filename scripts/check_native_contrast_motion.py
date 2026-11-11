@@ -351,7 +351,7 @@ def main() -> None:
                                   if (!parts.some(part => part.endsWith('::placeholder') &&
                                       element.matches(part.slice(0, -'::placeholder'.length)))) continue;
                                   let value = rule.style.color;
-                                  const custom = /^var\((--[^),]+)\)$/.exec(value);
+                                  const custom = /^var\\((--[^),]+)\\)$/.exec(value);
                                   if (custom) value = getComputedStyle(element).getPropertyValue(custom[1]).trim();
                                   if (value) {{ foreground = value; foregroundSource = 'stylesheet ' + rule.selectorText; }}
                                 }}

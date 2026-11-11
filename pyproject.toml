@@ -98,7 +98,8 @@ dev = [
 # setup/assertions; they are not application hot paths. Production I/O is checked.
 # PLC0415: imports belong at module level (engineering standards §2.3). A
 # function-local import states why on its line: `# noqa: PLC0415 - <reason>`.
-select = ["F", "E9", "B", "UP", "PERF", "ASYNC", "PLC0415"]
+# W605: invalid escape sequences, which future Python versions reject.
+select = ["F", "E9", "W605", "B", "UP", "PERF", "ASYNC", "PLC0415"]
 
 [tool.ruff.lint.per-file-ignores]
 # Entry points that defer each command's or service's imports until it runs, so
