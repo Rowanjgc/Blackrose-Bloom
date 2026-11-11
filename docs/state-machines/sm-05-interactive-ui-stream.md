@@ -474,8 +474,7 @@ scripts/check_unit_tests.py -p test_diagram_repairs.py
 # All checks passed!
 ```
 
-`tests/test_interactive_answers.py` named by the bead does not exist in this
-checkout; the interactive-answer policy tests live in `tests/test_ui_documents.py`
+The interactive-answer policy tests live in `tests/test_ui_documents.py`
 (class `UITests`, 37 tests, run above). No source file was modified, so no other
 module's suite was re-run beyond the focused set above; the full
 `scripts/check_health.py` gate was not run because sibling agents are editing

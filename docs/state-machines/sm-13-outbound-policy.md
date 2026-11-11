@@ -462,5 +462,5 @@ pre-fix code printed `linked#part: link on a page read in this reply`.
 Not run: `scripts/check_health.py` (the worktree carries other agents' in-flight
 edits to unrelated modules, so its whole-repo gate would not describe this
 change) and the native/browser probes, which this policy-only change does not
-touch. `tests/test_outbound.py` named in the brief does not exist here;
+touch.
 `tests/test_security_boundaries.py` is the maintained outbound suite.
