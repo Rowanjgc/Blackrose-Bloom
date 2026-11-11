@@ -303,20 +303,19 @@ runtime builds, then run:
 .venv/bin/python scripts/check_health.py --gui
 ```
 
-The first runs the offline unittest suite, Ruff correctness checks, targeted mypy
-checks, Node syntax checks and dependency lock validation. It uses temporary
-databases, deterministic embedders, controlled network backends and scripted model
-streams. Node also runs the actual animation interpreter through the tests.
+The command list in [`scripts/check_health.py`](../scripts/check_health.py) is
+the single source for what each run covers; [Verify a
+change](../CONTRIBUTING.md#verify-a-change) explains when each applies. The
+offline run uses temporary databases, deterministic embedders, controlled network
+backends and scripted model streams. The graphical run's hidden-window probes use
+temporary XDG directories, fake providers and mock image transports; they do not
+use the user's chat database or send paid requests. Live model and GPU generation
+checks remain separate operational scripts.
 
-The optional graphical run requires GTK/WebKit and a display. Its hidden-window
-checks use temporary XDG directories, fake providers and mock image transports;
-they do not use the user's chat database or send paid requests. Live model and
-GPU generation checks remain separate operational scripts.
-
-CI runs the offline checks on Python 3.12 and 3.13 without installing GTK bindings.
-Ruff deliberately starts with correctness/unused-import rules; typing focuses on
-stored records, prompt admission, effect state and turn orchestration. Grow these
-checks around meaningful contracts rather than applying a formatting rewrite.
+Ruff's rule selection in `pyproject.toml` favors correctness and event-loop
+hazards over style, and mypy's file list focuses on stored records, prompt
+admission, effect state and turn orchestration. Grow these checks around
+meaningful contracts rather than applying a formatting rewrite.
 
 ## Conversation workspaces
 
