@@ -8,16 +8,12 @@ Run by ``check_health.py``. For every tracked Markdown file outside ``skills/``
   top-level source directories) exist, unless Git ignores them as generated;
 - ``file::name`` references name a ``def`` or ``class`` in that file;
 - no reference cites a line number (``file.py:123``). Line numbers drift with
-  every edit above them; cite the function, class or test instead. Documents that
-  predate this rule may keep at most their count in ``check_docs_baseline.json``.
-  The baseline may only shrink: a count below it fails until the baseline is
-  lowered, so a fixed reference cannot quietly come back.
+  every edit above them; cite the function, class or test instead.
 
 Fenced code blocks are skipped. Exit status is nonzero when anything is wrong.
 """
 from __future__ import annotations
 
-import json
 import re
 import subprocess
 import sys
@@ -25,7 +21,6 @@ from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BASELINE = Path(__file__).with_name('check_docs_baseline.json')
 SOURCE_DIRS = ('src', 'scripts', 'docs', 'tests', 'skills', 'experiments',
                'ui-runtime', 'animation-runtime', 'diagram-runtime')
 SKIPPED_PREFIXES = ('skills/',)
@@ -104,10 +99,9 @@ def is_ignored(root, relative):
 
 
 def check_file(root, relative, *, ignored=is_ignored):
-    """Problems in one Markdown file, and its count of line-number references."""
+    """Problems in one Markdown file."""
     path = root / relative
     problems = []
-    line_refs = 0
     text = path.read_text(encoding='utf-8')
     anchor_cache = {}
     for number, line in prose_lines(text):
@@ -125,7 +119,8 @@ def check_file(root, relative, *, ignored=is_ignored):
                 if anchor.lower() not in known:
                     problems.append(f'{where}: link to missing anchor {target}')
         code_spans = _CODE.findall(line)
-        line_refs += len(_LINE_REF.findall(_URL.sub('', line)))
+        problems.extend(f'{where}: line-number reference {reference}; cite the function, '
+                        'class or test instead' for reference in _LINE_REF.findall(_URL.sub('', line)))
         for span in code_spans:
             span = span.strip()
             reference = _TEST_REF.match(span)
@@ -146,26 +141,14 @@ def check_file(root, relative, *, ignored=is_ignored):
                 candidate = span.rstrip('/').rstrip('.,;:')
                 if not (root / candidate).exists() and not ignored(root, candidate):
                     problems.append(f'{where}: missing path `{span}`')
-    return problems, line_refs
+    return problems
 
 
-def check(root, files, baseline, *, ignored=is_ignored):
+def check(root, files, *, ignored=is_ignored):
     """All problems across ``files`` (paths relative to ``root``)."""
     problems = []
-    counts = {}
     for relative in files:
-        found, line_refs = check_file(root, relative, ignored=ignored)
-        problems += found
-        if line_refs:
-            counts[relative] = line_refs
-    for relative in sorted(set(counts) | set(baseline)):
-        count, allowed = counts.get(relative, 0), baseline.get(relative, 0)
-        if count > allowed:
-            problems.append(f'{relative}: {count} line-number references (allowed {allowed}); '
-                            'cite the function, class or test instead of a line')
-        elif count < allowed:
-            problems.append(f'{relative}: {count} line-number references, below the baseline '
-                            f'of {allowed}; lower it in {BASELINE.name}')
+        problems += check_file(root, relative, ignored=ignored)
     return problems
 
 
@@ -177,8 +160,7 @@ def tracked_markdown(root):
 
 
 def main():
-    baseline = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
-    problems = check(ROOT, tracked_markdown(ROOT), baseline)
+    problems = check(ROOT, tracked_markdown(ROOT))
     for problem in problems:
         print(problem)
     if problems:

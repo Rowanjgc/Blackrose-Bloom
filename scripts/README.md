@@ -17,7 +17,6 @@ Run by `check_health.py`; no display, network, model or user data.
 | [`check_unit_tests.py`](check_unit_tests.py) | Offline unittests in scratch XDG directories; fails if a test writes outside them |
 | [`check_recovery.py`](check_recovery.py) | Synthetic stopped-application backup and restore drill |
 | [`check_docs.py`](check_docs.py) | Markdown links, anchors, repository paths and symbol references; no line-number references |
-| [`check_docs_baseline.json`](check_docs_baseline.json) | Line-number references older documents may keep; may only shrink |
 
 ## Native probes in the health gate
 

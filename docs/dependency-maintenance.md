@@ -63,11 +63,6 @@ in ignored `artifacts/` and must not include user data.
    fixes, not just the final green result. A local run does not verify GitHub
    branch protection, required checks or remote workflow success. Inspect those
    settings separately before relying on them.
-7. Review the drift allowances that the health gate tolerates. Each should
-   shrink or carry a reason that still holds:
-   - `scripts/check_docs_baseline.json`: line-number references kept by documents
-     that predate the rule. Record the total; a count that has not fallen for two
-     reviews means the conversion has stalled (`DECISIONS.MD` 2026-11-11).
 
 ## 2026-10-17 review and trial update
 
