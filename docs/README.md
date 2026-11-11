@@ -37,7 +37,16 @@
 | [Dependency and CI maintenance](dependency-maintenance.md) | Manual monthly review, advisory disposition, action pins and trial-update checks |
 | [Design language](../GOTHIC_BLOOM_DESIGN_LANGUAGE.md) | Canonical Gothic Bloom design reference |
 | [Design studies](design-previews/README.md) | Three static design directions and review screenshots |
+
+## Preserved reviews and evidence
+
+Dated records of what was found and verified at the time. They are evidence, not
+current guarantees; the guides above and the tests describe the code as it is.
+
+| Document | Purpose |
+| --- | --- |
 | [Stabilization](stabilization.md) | Reliability findings and verification from 2026-10-15 |
 
 Keep raw exploratory output in `/tmp` or ignored `artifacts/`. Add new guides to
-this index and link them from the relevant feature documentation.
+this index and link them from the relevant feature documentation; dated
+investigations go under preserved reviews.

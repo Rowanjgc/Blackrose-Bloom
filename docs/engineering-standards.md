@@ -148,7 +148,7 @@ handler boundary has since shipped; see §2.1.)
 
 ### 2.3 Dependency direction
 
-*Standard; removing the two existing cycles is Proposed (`bra-lae`).*
+*Standard. Removing the two hidden cycles is Established (`bra-lae`).*
 
 Prefer module-level imports. Use a function-local import only when:
 
@@ -460,7 +460,8 @@ need boundary tests and explicit review. A "small cleanup" in these areas can
 silently widen authority.
 
 **Measure before and after when performance motivates the change.** The project
-has a culture of bounded measurements (`docs/audits/`, `scripts/check_health.py`).
+has a culture of bounded measurements (the dated audits in the private records,
+`scripts/check_health.py`).
 Use it. Do not claim a performance improvement from a line-count reduction.
 
 ## 10. Agent-assisted development
@@ -539,6 +540,10 @@ takeaway, ask whether it contradicts or extends this document. If yes, open a
 small standards amendment rather than changing behavior silently. If no, leave the
 document alone.
 
+When a Proposed item ships, update its section and its appendix row in the same
+change, citing the test or module that now establishes it. A section and the
+appendix that disagree about status are a defect in this document.
+
 ## Appendix: status of each convention
 
 | Convention | Status | Evidence / source |
@@ -572,5 +577,5 @@ document alone.
 | A committed complete reply outlasts a late Stop | Established — `bra-1hs` | `turns.py`, `DECISIONS.MD` 2026-11-05 |
 | One provider-selection source | Proposed — `bra-rr1` | Audit §5.4 |
 | Coverage + targeted mutation baseline | Proposed — `bra-ot9` | Audit §5.6 |
-| Import-direction rule and cycle removal | Proposed — `bra-lae` | Audit §5.5 |
+| Import-direction rule and cycle removal | Established — `bra-lae` | `tests/test_import_direction.py` |
 | Ratification of this document | Established — `bra-6t9` | `DECISIONS.MD` 2026-11-05 |

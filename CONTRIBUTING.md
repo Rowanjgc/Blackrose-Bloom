@@ -62,10 +62,12 @@ links rather than restates, so change the linked document, not AGENTS.md.
 git diff --check
 ```
 
-The health command runs offline unittests, the synthetic
-[backup/restore drill](docs/recovery.md#repeatable-synthetic-drill), Ruff correctness checks, targeted mypy,
-page JavaScript syntax checks, and Python lockfile validation. CI also installs
-and builds the locked Node dependencies. Keep tests focused on behavior and
+The health command's list in `scripts/check_health.py` is the source of what it
+runs: offline unittests, the synthetic
+[backup/restore drill](docs/recovery.md#repeatable-synthetic-drill), Ruff, targeted
+mypy, page JavaScript syntax checks, the interactive-answer runtime tests and
+Python lockfile validation. CI also installs and builds the locked Node
+dependencies. Keep tests focused on behavior and
 regressions. Follow existing file style; broad formatting changes belong in a
 separate change.
 
@@ -83,11 +85,9 @@ Native desktop checks require a display and an explicit command:
 .venv/bin/python scripts/check_health.py --gui
 ```
 
-This uses scratch storage and scripted providers. CI is configured to run the same maintained
-native probe list under Xvfb, including attachments, generation, legacy animation,
-Motion Canvas/recovery, provider selection, session reload, workspaces, library
-review, memory review, interactive answers and citation rigor. Routine health checks must not open desktop
-windows. To run just the native checks on a machine with Xvfb and dbus installed:
+This uses scratch storage and scripted providers. The native probes it runs are
+the `GUI_PROBES` list in `scripts/check_health.py`; CI runs the same list under
+Xvfb. Routine health checks must not open desktop windows. To run just the native checks on a machine with Xvfb and dbus installed:
 
 ```sh
 xvfb-run -a dbus-run-session -- .venv/bin/python scripts/check_health.py --gui-only --report-dir artifacts/native
@@ -102,9 +102,8 @@ The optional growth and accessibility harnesses (`scripts/measure_housekeeping.p
 `scripts/check_gui_housekeeping.py`) record synthetic scale and native AT-SPI
 observations separately from routine health checks.
 
-The Reading Room, model-picker, interactive-answer, citation, reasoning-effort,
-conversation-paging, edit-review, history-paging, chat-navigation and help-sheet browser probes use a locked
-development dependency at the repository root:
+The browser probes are the `test:browser` script in the root `package.json`.
+They use a locked development dependency at the repository root:
 
 ```sh
 npm ci
