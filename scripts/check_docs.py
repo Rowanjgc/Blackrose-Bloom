@@ -7,14 +7,19 @@ Run by ``check_health.py``. For every tracked Markdown file outside ``skills/``
 - backticked repository paths (``src/…``, ``tests/…``, ``scripts/…`` and the other
   top-level source directories) exist, unless Git ignores them as generated;
 - ``file::name`` references name a ``def`` or ``class`` in that file;
-- no reference cites a line number (``file.py:123``). Line numbers drift with
-  every edit above them; cite the function, class or test instead.
+- no reference cites a line number (a file name, a colon and a number). Line
+  numbers drift with every edit above them; cite the function, class or test.
 
-Fenced code blocks are skipped. Exit status is nonzero when anything is wrong.
+Fenced code blocks are skipped. The line-number ban also covers comments and
+docstrings in tracked Python files under ``PYTHON_DIRS``. Exit status is nonzero
+when anything is wrong.
 """
 from __future__ import annotations
 
+import ast
+import io
 import re
+import tokenize
 import subprocess
 import sys
 from collections import Counter
@@ -24,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIRS = ('src', 'scripts', 'docs', 'tests', 'skills', 'experiments',
                'ui-runtime', 'animation-runtime', 'diagram-runtime')
 SKIPPED_PREFIXES = ('skills/',)
+PYTHON_DIRS = ('src', 'tests', 'scripts', 'experiments')
 
 _FENCE = re.compile(r'^\s*(```|~~~)')
 _LINK = re.compile(r'!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)')
@@ -152,15 +158,47 @@ def check(root, files, *, ignored=is_ignored):
     return problems
 
 
-def tracked_markdown(root):
-    output = subprocess.run(['git', 'ls-files', '-z', '*.md'], cwd=root, check=True,
+def python_prose(text):
+    """Yield (line number, text) for each comment and docstring line in Python source."""
+    for token in tokenize.generate_tokens(io.StringIO(text).readline):
+        if token.type == tokenize.COMMENT:
+            yield token.start[0], token.string
+    for node in ast.walk(ast.parse(text)):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            first = node.body[0] if node.body else None
+            if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+                    and isinstance(first.value.value, str)):
+                for offset, line in enumerate(first.value.value.splitlines()):
+                    yield first.lineno + offset, line
+
+
+def check_python_file(root, relative):
+    """Line-number references in one Python file's comments and docstrings."""
+    text = (root / relative).read_text(encoding='utf-8')
+    return [f'{relative}:{number}: line-number reference {reference}; cite the function, '
+            'class or test instead'
+            for number, line in sorted(python_prose(text))
+            for reference in _LINE_REF.findall(_URL.sub('', line))]
+
+
+def tracked(root, *patterns):
+    output = subprocess.run(['git', 'ls-files', '-z', *patterns], cwd=root, check=True,
                             capture_output=True).stdout.decode()
-    return [name for name in output.split('\0')
-            if name and not name.startswith(SKIPPED_PREFIXES)]
+    return [name for name in output.split('\0') if name]
+
+
+def tracked_markdown(root):
+    return [name for name in tracked(root, '*.md') if not name.startswith(SKIPPED_PREFIXES)]
+
+
+def tracked_python(root):
+    return tracked(root, *(f'{directory}/*.py' for directory in PYTHON_DIRS))
 
 
 def main():
     problems = check(ROOT, tracked_markdown(ROOT))
+    for relative in tracked_python(ROOT):
+        problems += check_python_file(ROOT, relative)
     for problem in problems:
         print(problem)
     if problems:

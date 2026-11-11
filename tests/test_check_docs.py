@@ -69,5 +69,33 @@ class DocumentationCheckTests(unittest.TestCase):
         self.assertEqual(self.problems('Serve on localhost:8080 or 127.0.0.1:9000.\n'), [])
 
 
+class PythonCommentCheckTests(unittest.TestCase):
+    def problems(self, source):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'module.py').write_text(source)
+            return check_docs.check_python_file(root, 'module.py')
+
+    def test_line_references_in_comments_and_docstrings_are_reported(self):
+        problems = self.problems(
+            '"""Module, see turns.py:358."""\n'
+            'class Thing:\n'
+            '    """Mirrors\n'
+            '    repository.py:791-794."""\n'
+            '    def run(self):\n'
+            '        return 1  # chat.py:231 handles this\n')
+        self.assertEqual([p.split(';')[0] for p in problems], [
+            'module.py:1: line-number reference turns.py:358',
+            'module.py:4: line-number reference repository.py:791',
+            'module.py:6: line-number reference chat.py:231'])
+
+    def test_code_strings_symbols_and_urls_are_not_reported(self):
+        self.assertEqual(self.problems(
+            '"""Cite ``Repository.finish_message`` or https://x.invalid/a.py:3."""\n'
+            'LOCATION = "main.py:12"\n'
+            'def f():\n'
+            '    return "b.js:20"  # see storage.snapshot.readonly_snapshot\n'), [])
+
+
 if __name__ == '__main__':
     unittest.main()
