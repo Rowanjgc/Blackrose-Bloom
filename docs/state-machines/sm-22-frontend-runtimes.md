@@ -11,106 +11,127 @@ into DOM state and bridge calls. The Python-side machines they talk to are
 
 | Runtime | Source | Executes in | Owner of its state |
 | --- | --- | --- | --- |
-| Motion Canvas player | `src/blackrose/gui/static/motion-canvas-player.js` (1–188) | the page's main frame | the page (`players` Set, one closure per mount) |
-| Motion Canvas frame adapter | `src/blackrose/gui/static/motion-canvas-frame.js` (1–166) | opaque `sandbox="allow-scripts"` iframe, no bridge | the frame (one closure) |
-| Built-in canvas player | `src/blackrose/gui/static/animations.js` (1–253) | the page's main frame | the page (`active`, one closure per mount) |
-| Mermaid adapter | `src/blackrose/gui/static/diagrams.js` (1–208) | the page's main frame | the page (module singleton + one closure per figure) |
-| Mermaid renderer | `diagram-runtime/host.js` (1–74) → `mermaid-host.html` (`diagram-runtime/build.mjs`) | opaque `sandbox="allow-scripts"` iframe, `default-src 'none'` CSP | the frame (`busy`) |
-| Interactive UI host | `ui-runtime/host.jsx` (1–122), `ui-runtime/library.jsx` (1–109) → `ui-runtime.js` (`ui-runtime/build.mjs`) | the page's main frame | the page (`mounts` Map, module `busy`) |
-| Main page controller | `src/blackrose/gui/static/bloom.js` (1–3565) | the page's main frame | the page (one closure) |
+| Motion Canvas player | `src/blackrose/gui/static/motion-canvas-player.js` | the page's main frame | the page (`players` Set, one closure per mount) |
+| Motion Canvas frame adapter | `src/blackrose/gui/static/motion-canvas-frame.js` | opaque `sandbox="allow-scripts"` iframe, no bridge | the frame (one closure) |
+| Built-in canvas player | `src/blackrose/gui/static/animations.js` | the page's main frame | the page (`active`, one closure per mount) |
+| Mermaid adapter | `src/blackrose/gui/static/diagrams.js` | the page's main frame | the page (module singleton + one closure per figure) |
+| Mermaid renderer | `diagram-runtime/host.js` → `mermaid-host.html` (`diagram-runtime/build.mjs`) | opaque `sandbox="allow-scripts"` iframe, `default-src 'none'` CSP | the frame (`busy`) |
+| Interactive UI host | `ui-runtime/host.jsx`, `ui-runtime/library.jsx` → `ui-runtime.js` (`ui-runtime/build.mjs`) | the page's main frame | the page (`mounts` Map, module `busy`) |
+| Main page controller | `src/blackrose/gui/static/bloom.js` | the page's main frame | the page (one closure) |
 
 `index.html` loads `animations.js`, `motion-canvas-player.js`, `ui-runtime.js`,
-`diagrams.js`, `bloom.js` in that order (165–169); `diagrams.js` resolves
-`#column` while it loads (`diagrams.js:14`) and `bloom.js` resolves `.dock`
-(`bloom.js:44`), so the order is a load-time dependency, not a preference. The
-three generated artifacts (`ui-runtime.js`, `ui-contract.json`,
+`diagrams.js`, `bloom.js` in that order (the `<script>` tags at the end of
+`src/blackrose/gui/static/index.html`); `diagrams.js` resolves `#column` while it
+loads (the module-level `MutationObserver` in `src/blackrose/gui/static/diagrams.js`)
+and `bloom.js` resolves `.dock` (the `dock` entry of
+`src/blackrose/gui/static/bloom.js::el`), so the order is a load-time dependency, not
+a preference. The three generated artifacts (`ui-runtime.js`, `ui-contract.json`,
 `mermaid-host.html`, `motion-canvas-runtime.js`) are gitignored build outputs
-(`.gitignore:31–36`) produced from the sources above; a checkout must run
-`npm run build --prefix ui-runtime` and `--prefix diagram-runtime` and
-`--prefix animation-runtime` before the window can render.
+(the generated `src/blackrose/gui/static/` entries in `.gitignore`) produced from the
+sources above; a checkout must run `npm run build --prefix ui-runtime` and
+`--prefix diagram-runtime` and `--prefix animation-runtime` before the window can
+render.
 
 Ownership follows [architecture](../architecture.md#modules-and-invariants):
 
 - **Python owns every decision.** `bloom.receive` is the only inbound path
-  (`bloom.js:952–961`, exposed at 3562) and it drops any event whose
-  `conversation_id` is not the current conversation. Outbound calls go through
-  `window.pywebview.api` (`bloom.js:21–28`; `gui/bridge.py`).
+  (`src/blackrose/gui/static/bloom.js::receive`, exposed as `window.bloom` at the end
+  of the file) and it drops any event whose `conversation_id` is not the current
+  conversation. Outbound calls go through `window.pywebview.api`
+  (`src/blackrose/gui/static/bloom.js::call`; `gui/bridge.py`).
 - **The trusted page is the boundary.** Model output only reaches the page as
-  escaped Markdown HTML (`bloom.js:12–14`), validated UI documents
-  (`ui_documents.py`, SM-05) or scene JSON; the sandboxed frames receive
-  postMessage strings and hold no bridge (`motion-canvas-player.js:17`,
-  `diagrams.js:30`, `diagram-runtime/build.mjs` CSP).
+  escaped Markdown HTML (the header comment of `src/blackrose/gui/static/bloom.js`),
+  validated UI documents (`ui_documents.py`, SM-05) or scene JSON; the sandboxed
+  frames receive postMessage strings and hold no bridge (the iframe set-up in
+  `src/blackrose/gui/static/motion-canvas-player.js::mount` and
+  `src/blackrose/gui/static/diagrams.js::renderer`, `diagram-runtime/build.mjs` CSP).
 - **Both sandboxed frames run with an opaque origin** and answer an explicit
-  message allow-list; `motion-canvas-frame.js:143` and `diagram-runtime/host.js:21`
-  check `event.source`/channel before acting.
+  message allow-list; the `blackrose-motion-control` `message` listener in
+  `src/blackrose/gui/static/motion-canvas-frame.js` and the `message` listener in
+  `diagram-runtime/host.js` check `event.source`/channel before acting.
 - **The page never writes durable state.** It reports and requests: animation
   failure (`animation_failed`), diagram failure (`diagram_failed`), UI state
   (`ui_state`), UI action (`ui_action`), layout (`save_layout`).
 - The async bridge means every page transition that ends in a bridge call is at
   least one microtask long (`call()` chains through `Promise.resolve`,
-  `bloom.js:24–27`); tests that observe calls must flush promise jobs.
+  `src/blackrose/gui/static/bloom.js::call`); tests that observe calls must flush
+  promise jobs.
 
 ## State variables
 
 ### A. Animation players
 
+Player variables are closure state of
+`src/blackrose/gui/static/motion-canvas-player.js::mount` (Motion Canvas) and
+`src/blackrose/gui/static/animations.js::mount` (built-in); the frame's are top-level
+in `src/blackrose/gui/static/motion-canvas-frame.js`, and the renderer's in
+`diagram-runtime/host.js`.
+
 | Variable | Location | Type | Meaning | Who writes |
 | --- | --- | --- | --- | --- |
-| `players` | `motion-canvas-player.js:4` | `Set<player>` | every live Motion Canvas mount in the page | `mount` (176), the dispose observer (172) |
-| `active` | `animations.js:10` | `player \| null` | the one built-in player that is playing | `start` (211), `pause` (206) |
-| `playing` | `motion-canvas-player.js:58`, `animations.js:184` | bool | per-player playback intent | `start`/`pause`, frame `state` reports (138) |
-| `ready`, `failed` | `motion-canvas-player.js:58` | bool | boot completed / mount is terminal | `receive` (119, 131), `showError` (99), `retry` (150) |
-| `time`, `duration` | `:58` | number | playback position (s) and the frame-reported duration | `receive` (136–137) and `seek` |
-| `timeout` | `:88` | timer id | the 20 s boot/retry clock | observer (93–95), `receive` error branch (128), `retry` (157–158) |
-| `options.recovery`, `figure.dataset.recovery` | `:62, 75` | object / string | the label and the dedup marker for the repair chain | `setRecovery` only |
-| `figure.dataset.ready`, `.error`, `.recovery` | `:75, 103–104, 131` | string | DOM-visible lifecycle | `receive`, `showError`, `retry` |
-| `ready`, `failed`, `inspection` | `motion-canvas-frame.js:4` | bool / object | frame-side lifecycle and the one pending review seek | the frame |
-| `busy` (renderer) | `diagram-runtime/host.js:18` | bool | one Mermaid render at a time inside the frame | the message handler (23, 72) |
+| `players` | `src/blackrose/gui/static/motion-canvas-player.js::players` | `Set<player>` | every live Motion Canvas mount in the page | `mount`, the dispose observer (`mount.observer`) |
+| `active` | `src/blackrose/gui/static/animations.js::active` | `player \| null` | the one built-in player that is playing | `start`, `pause` (`animations.js` `mount`) |
+| `playing` | both `mount` closures | bool | per-player playback intent | `start`/`pause`, frame `state` reports (`mount.receive`) |
+| `ready`, `failed` | Motion Canvas `mount` | bool | boot completed / mount is terminal | `mount.receive` (`ready` branch), `mount.showError`, the retry button's `onclick` |
+| `time`, `duration` | Motion Canvas `mount` | number | playback position (s) and the frame-reported duration | `mount.receive` (`ready`/`state` branch) and `seek` |
+| `timeout` | Motion Canvas `mount` | timer id | the 20 s boot/retry clock | `mount.visibility`, `mount.receive` error branch, the retry button's `onclick` |
+| `options.recovery`, `figure.dataset.recovery` | `mount.setRecovery` | object / string | the label and the dedup marker for the repair chain | `setRecovery` only |
+| `figure.dataset.ready`, `.error`, `.recovery` | Motion Canvas `mount` | string | DOM-visible lifecycle | `receive`, `showError`, retry |
+| `ready`, `failed`, `inspection` | `src/blackrose/gui/static/motion-canvas-frame.js::inspection` (one `let`) | bool / object | frame-side lifecycle and the one pending review seek | the frame |
+| `busy` (renderer) | `diagram-runtime/host.js::busy` | bool | one Mermaid render at a time inside the frame | the `message` listener (set on entry, reset in its `finally`) |
 
 ### B. Mermaid
 
+All variables are module state of `src/blackrose/gui/static/diagrams.js` unless noted.
+
 | Variable | Location | Type | Meaning | Who writes |
 | --- | --- | --- | --- | --- |
-| `ready` | `diagrams.js:7` | `Promise` | the one renderer boot; cached for the page's life | `renderer` (28) only |
-| `frame`, `broken` | `:7` | element / Error | the singleton iframe and the latched boot/render failure | `renderer`/`fail` (36–44) |
-| `queue` | `:8` | `Promise` | serialises render jobs | `render` (91, 111) |
-| `pending` | `:5` | `Map<id, job>` | render jobs awaiting a frame result | `render` (102), `receive` (52), `fail` (42) |
-| `sequence` | `:7` | int | job ids **and** source-control element ids | `render` (99), `mount` (124) |
-| `cache`, `cacheBytes` | `:5–6` | `Map<source, result>` / int | LRU of rendered SVGs (32 entries / 8 MiB) | `remember` (73–83) |
-| `observations` | `:6` | `Map<figure, IntersectionObserver>` | figures whose render is still pending | `mount` (184), the column MutationObserver (12), intersect (157) |
-| `figure._diagramMounted` | `:116` | bool | mount-once marker | `mount` |
-| `failure`, `reported` | `:130` | Error / bool | the last failure and the report-once latch | `mount` (131–141), catch (179) |
-| `figure._diagramRepairSettled`, `status.hidden` | `:138, 201–204` | bool | whether an optimistic label may overwrite the status | `repairResult` |
+| `ready` | `src/blackrose/gui/static/diagrams.js::ready` | `Promise` | the one renderer boot; cached for the page's life | `renderer` only |
+| `frame`, `broken` | `src/blackrose/gui/static/diagrams.js::broken` (same `let`) | element / Error | the singleton iframe and the latched boot/render failure | `renderer`/`renderer.fail` |
+| `queue` | `src/blackrose/gui/static/diagrams.js::queue` | `Promise` | serialises render jobs | `render` |
+| `pending` | `src/blackrose/gui/static/diagrams.js::pending` | `Map<id, job>` | render jobs awaiting a frame result | `render`, `renderer.receive`, `renderer.fail` |
+| `sequence` | `src/blackrose/gui/static/diagrams.js::sequence` | int | job ids **and** source-control element ids | `render`, `mount` |
+| `cache`, `cacheBytes` | `src/blackrose/gui/static/diagrams.js::cache` | `Map<source, result>` / int | LRU of rendered SVGs (32 entries / 8 MiB) | `remember` |
+| `observations` | `src/blackrose/gui/static/diagrams.js::observations` | `Map<figure, IntersectionObserver>` | figures whose render is still pending | `mount`, the column MutationObserver, the per-figure intersect callback |
+| `figure._diagramMounted` | `mount` | bool | mount-once marker | `mount` |
+| `failure`, `reported` | `mount` (per figure) | Error / bool | the last failure and the report-once latch | `mount._notifyDiagramFailure`, the render `catch` |
+| `figure._diagramRepairSettled`, `status.hidden` | `mount`, `repairResult` | bool | whether an optimistic label may overwrite the status | `repairResult` |
 
 ### C. Interactive UI host
 
+All variables live in `ui-runtime/host.jsx`; a record is built by
+`ui-runtime/host.jsx::mount`.
+
 | Variable | Location | Type | Meaning | Who writes |
 | --- | --- | --- | --- | --- |
-| `mounts` | `host.jsx:7` | `Map<block_id, record>` | one record per rendered block | `mount`/`unmount` |
-| `busy` | `:8` | bool | the reply lock mirrored from `bloom.setBusy` | `setBusy` (119) |
-| `record.block` | `:86, 97` | dict | last accepted block payload | `mount`, `update` |
-| `record.state`, `stateInitialized` | `:86–89` | dict / bool | widget values and whether defaults were merged | `mount`, `change` (29), `update` (99) |
-| `record.sequence` | `:90` | int | last acknowledged `ui_state.sequence` | `mount` (90), `flush` (80) |
-| `record.dirty` | `:90` | bool | a change not yet acknowledged | `change` (30), `flush` (74, 81) |
-| `record.timer` | `:32` | timer id | the 250 ms debounce | `change`, `flush`, `unmount` |
-| `record.saving` | `:76` | `Promise \| null` | the one in-flight save | `flush` |
-| `record.submitting` | `:40` | bool | the submit lock | `submit` |
-| `record.error` | `:90, 46` | string | the surface error | `submit`, `flush` callers, `Boundary` |
+| `mounts` | `ui-runtime/host.jsx::mounts` | `Map<block_id, record>` | one record per rendered block | `mount`/`unmount` |
+| `busy` | `ui-runtime/host.jsx::busy` | bool | the reply lock mirrored from `bloom.setBusy` | `setBusy` |
+| `record.block` | `mount`, `update` | dict | last accepted block payload | `mount`, `update` |
+| `record.state`, `stateInitialized` | `mount` | dict / bool | widget values and whether defaults were merged | `mount`, `host.change`, `update` |
+| `record.sequence` | `mount` | int | last acknowledged `ui_state.sequence` | `mount`, `flush` |
+| `record.dirty` | `mount` | bool | a change not yet acknowledged | `host.change`, `flush` |
+| `record.timer` | `host.change` | timer id | the 250 ms debounce | `change`, `flush`, `unmount` |
+| `record.saving` | `flush` | `Promise \| null` | the one in-flight save | `flush` |
+| `record.submitting` | `host.submit` | bool | the submit lock | `submit` |
+| `record.error` | `mount`, `host.submit` | string | the surface error | `submit`, `flush` callers, `Boundary` |
 
 ### D. Main page controller
 
+All variables are closure state of `src/blackrose/gui/static/bloom.js`; the "Location"
+column names the declaration.
+
 | Variable | Location | Type | Meaning | Who writes |
 | --- | --- | --- | --- | --- |
-| `state.busy`, `state.status`, `state.replies`, `state.recentOutcome` | `bloom.js:47–59` | — | reply lock, last status payload, live replies by key, last outcome | `setBusy` (965), `on.status` (676), `on.reply_*` (779–859) |
-| `state.rigorPending`, `rigorTarget` | `:52, 1008` | bool / string | the one in-flight rigour save and its optimistic mode | `setRigor` (1036–1052) |
-| `effortTarget` | `:1094` | string \| null | the optimistic effort level | `cycleEffort` (1119–1127) |
-| `historyEpoch` | `:622` | int | invalidates an in-flight earlier-page request | `on.transcript` (735) |
-| `suggestionEpoch`, `suggestionTimer`, `popover` | `:1604–1608` | int / timer / `{open,items,index,reference,referenceDetail}` | the `/` `@` `$` popover and its debounce | `updateCommandPopover` (1672–1705), `closeCommands` (1707), `send` (2042), `on.conversations` (722) |
-| `state.dialog`, `state.dialogVariant`, `el.app.inert`, `.scrim.is-closing` | `:58, 1264–1265, 1290, 1310` | — | the modal machine | `openDialog`/`closeDialog` |
-| `layout` | `:1763` | `{width, collapsed, wrap}` | persisted pane layout | `setSidebar`, `endDrag`, `setWrap`, `restoreLayout` |
-| `overlayMode`, `overlayOpen`, `drag` | `:1766, 1772, 1858` | bool / object | responsive drawer mode, drawer visibility, live drag | `fitPanes` (1924), `setSidebar` (1812), pointer handlers (1859–1905) |
-| `paneSpring`, `widthSpring`, `stickPending`, `pinned` | `:1764–1765, 189, 2001` | Spring / bool | pane presence, sidebar width, follow coalescing, reader pin | `applyPane`, `settleWidth`, `follow` (191), scroll listener (2002) |
-| `frame.dataset.state`, `.imageSrc`, `.previewId`, `.imageAlt` | `:357, 346, 349, 339` | string | per-image-frame loader state | `imageFrame`, `loadImage`, `requestStoredImage` |
+| `state.busy`, `state.status`, `state.replies`, `state.recentOutcome` | `src/blackrose/gui/static/bloom.js::state` | — | reply lock, last status payload, live replies by key, last outcome | `setBusy`, `on.status`, `on.reply_*` |
+| `state.rigorPending`, `rigorTarget` | `state`; `src/blackrose/gui/static/bloom.js::rigorTarget` | bool / string | the one in-flight rigour save and its optimistic mode | `setRigor` |
+| `effortTarget` | `src/blackrose/gui/static/bloom.js::effortTarget` | string \| null | the optimistic effort level | `cycleEffort` |
+| `historyEpoch` | `src/blackrose/gui/static/bloom.js::historyEpoch` | int | invalidates an in-flight earlier-page request | `on.transcript` |
+| `suggestionEpoch`, `suggestionTimer`, `popover` | `src/blackrose/gui/static/bloom.js::popover` and the `let`s after it | int / timer / `{open,items,index,reference,referenceDetail}` | the `/` `@` `$` popover and its debounce | `updateCommandPopover`, `closeCommands`, `send`, `on.conversations` |
+| `state.dialog`, `state.dialogVariant`, `el.app.inert`, `.scrim.is-closing` | `state`; `openDialog`, `closeDialog` | — | the modal machine | `openDialog`/`closeDialog` |
+| `layout` | `src/blackrose/gui/static/bloom.js::layout` | `{width, collapsed, wrap}` | persisted pane layout | `setSidebar`, `endDrag`, `setWrap`, `restoreLayout` |
+| `overlayMode`, `overlayOpen`, `drag` | `src/blackrose/gui/static/bloom.js::overlayMode`, `src/blackrose/gui/static/bloom.js::overlayOpen`, `src/blackrose/gui/static/bloom.js::drag` | bool / object | responsive drawer mode, drawer visibility, live drag | `fitPanes`, `setSidebar`, the `el.resizer` pointer handlers |
+| `paneSpring`, `widthSpring`, `stickPending`, `pinned` | `src/blackrose/gui/static/bloom.js::paneSpring`, `src/blackrose/gui/static/bloom.js::widthSpring`, `src/blackrose/gui/static/bloom.js::stickPending`, `src/blackrose/gui/static/bloom.js::pinned` | Spring / bool | pane presence, sidebar width, follow coalescing, reader pin | `applyPane`, `settleWidth`, `follow`, the transcript `scroll` listener |
+| `frame.dataset.state`, `.imageSrc`, `.previewId`, `.imageAlt` | `src/blackrose/gui/static/bloom.js::imageFrame`, `src/blackrose/gui/static/bloom.js::loadImage` | string | per-image-frame loader state | `imageFrame`, `loadImage`, `requestStoredImage` |
 
 ## States
 
@@ -126,17 +147,20 @@ Ownership follows [architecture](../architecture.md#modules-and-invariants):
 | `FAILED` | `failed`; `dataset.error` set, controls disabled, `srcdoc` cleared |
 | `DISPOSED` | observer saw `!figure.isConnected`; player removed, listeners removed |
 
-`INSPECTING` is not a page state: it is a frame-only state
-(`motion-canvas-frame.js:152–157, 62–133`) that the page never observes except
-through the resulting `inspected` message (consumed by the Motion Canvas probe
-harness, not by `bloom.js`).
+`INSPECTING` is not a page state: it is a frame-only state (the `inspect` command
+branch of the control `message` listener and the inspection block of the
+`player.onRender` subscriber in `src/blackrose/gui/static/motion-canvas-frame.js`) that
+the page never observes except through the resulting `inspected` message (consumed by
+the Motion Canvas probe harness, not by `bloom.js`).
 
 ### A2. One built-in canvas player (`animations.js`)
 
 `IDLE` (`!playing`), `PLAYING` (`playing`, `active === player`), `ENDED`
 (`!playing`, `time >= scene.duration`), `DEFUNCT` (`!figure.isConnected` — the
-observers and animation frames are released lazily by `tick`, `:223`). The first
-render at mount is `IDLE` regardless of `prefers-reduced-motion` (`:245–246`).
+observers and animation frames are released lazily by `tick`, see
+`src/blackrose/gui/static/animations.js::mount.tick`). The first render at mount is
+`IDLE` regardless of `prefers-reduced-motion` (the final `render()` call of
+`src/blackrose/gui/static/animations.js::mount`).
 
 ### B. Mermaid singleton and figures
 
@@ -146,15 +170,16 @@ render at mount is `IDLE` regardless of `prefers-reduced-motion` (`:245–246`).
 | `BOOTING` | `ready` pending, no failure yet |
 | `READY_IDLE` | `ready` resolved, `pending` empty |
 | `RENDERING_JOB` | a job is registered in `pending` (at most one, by the queue) |
-| `BROKEN` | `broken` set; latched for the page (`:36–44, 94`) |
+| `BROKEN` | `broken` set; latched for the page (`src/blackrose/gui/static/diagrams.js::renderer.fail` and the `broken` check in `src/blackrose/gui/static/diagrams.js::render`) |
 
 Per figure: `OBSERVING` (mounted, `_diagramMounted`, observer armed) →
 `QUEUED_AND_RENDERING` (intersected; inside the queue) → `IMAGE_LOADING` (img
 created, `load` not yet fired) → `RENDERED_DIAGRAM` (load fired; viewport shown,
 source hidden) or `FAILED_AWAITING_SETTLE` (`failure` set, not yet reported) →
 `REPAIR_REPORTED` (`reported` true). A failure before `messageState ===
-'complete'` stays in `FAILED_AWAITING_SETTLE` until `settled()` (`:188–190`)
-or a later `mount` (via the `_notifyDiagramFailure` hook) reports it.
+'complete'` stays in `FAILED_AWAITING_SETTLE` until `settled()`
+(`src/blackrose/gui/static/diagrams.js::settled`) or a later `mount` (via the
+`_notifyDiagramFailure` hook) reports it.
 
 ### C. Interactive UI host
 
@@ -162,7 +187,7 @@ Render mode (per record, recomputed every `render`):
 
 | State | Predicate | Shown |
 | --- | --- | --- |
-| `UNSUPPORTED_VERSION` | `!supported(b)` (`host.jsx:18–20`) | `data-ui-status="unsupported_version"`, "needs a newer UI runtime" |
+| `UNSUPPORTED_VERSION` | `!supported(b)` (`ui-runtime/host.jsx::supported`) | `data-ui-status="unsupported_version"`, "needs a newer UI runtime" |
 | `PREPARING` | compatible, no `document`, `status==='streaming'` | "Preparing interactive answer…" |
 | `UNUSABLE_STATUS` | compatible, `document`, status not `ready`/`streaming` | "Interactive answer {status}." |
 | `RENDERED` | `usable` | `Renderer` inside `Host.Provider` |
@@ -175,7 +200,8 @@ Save state (per record): `CLEAN` (`!dirty`, no timer, no `saving`) →
 `inspect()` (it exposes only `state`, `sequence`, `status`).
 
 Submit: `IDLE` → `SUBMITTING` (`submitting`) → `IDLE`; `REFUSED` is `IDLE` plus a
-`record.error`, because `submit` catches its own failure (`:41–47`).
+`record.error`, because `submit` catches its own failure
+(`ui-runtime/host.jsx::render.host.submit`).
 
 ### D. Main page controller
 
@@ -198,7 +224,8 @@ Submit: `IDLE` → `SUBMITTING` (`submitting`) → `IDLE`; `REFUSED` is `IDLE` p
   `reply_end`, `reasoning`, `reply_images`, `tool_activity`, `audit_update`,
   `ui_update`, `diagram_update`, `notice`, `animation_recovery`, `attachments`,
   `confirm_delete`, `help`, `open_*`, `edit_approval`, `library_approval`,
-  `bell`, `flash`, `restore_draft`, `quit` (`bloom.js:675–950`).
+  `bell`, `flash`, `restore_draft`, `quit` (the handlers of
+  `src/blackrose/gui/static/bloom.js::on`).
 - **Frame messages**: `blackrose-motion` `host-ready` / `ready` / `state` /
   `raster` / `error` / `inspected` (frame → page) and
   `blackrose-motion-control` `initialize` / `play` / `pause` / `seek` / `loop` /
@@ -210,286 +237,360 @@ Submit: `IDLE` → `SUBMITTING` (`submitting`) → `IDLE`; `REFUSED` is `IDLE` p
   `focusout` on a UI block; image `load`/`error` and clicks.
 - **Timers**: 20 s boot/render timeouts; 250 ms UI-state debounce; 180 ms
   suggestion debounce; 1400 ms toast; 150 ms live-region coalescing
-  (`bloom.js:3548`); 100 ms Motion Canvas resize debounce.
+  (`src/blackrose/gui/static/bloom.js::forwardLiveRegions`); 100 ms Motion Canvas
+  resize debounce.
 - **Observers**: IntersectionObserver (player visibility, image previews,
   diagram lazy render), MutationObserver (player dispose, diagram figure
   collection, live regions), ResizeObserver (panes, composer, transcript,
   dock, settings text scale).
-- **Startup**: `window.pywebview` present → `start()` (`bloom.js:3563–3564`);
-  else wait for `pywebviewready`. `start` calls `ready` once and appends the
-  welcome (`3479–3494`). `restoreLayout` applies the saved layout without
-  animating (`3496–3508`).
+- **Startup**: `window.pywebview` present → `start()` (the last statements of
+  `src/blackrose/gui/static/bloom.js`); else wait for `pywebviewready`. `start` calls
+  `ready` once and appends the welcome (`src/blackrose/gui/static/bloom.js::start`).
+  `restoreLayout` applies the saved layout without animating
+  (`src/blackrose/gui/static/bloom.js::restoreLayout`).
 
 ## Transition table
 
 ### A. Animation players
 
+Owned by `src/blackrose/gui/static/motion-canvas-player.js::mount` and its closures
+(`mount.visibility`, `mount.receive`, `mount.showError`, `mount.start`,
+`mount.observer`, the button handlers), with the module-level
+`src/blackrose/gui/static/motion-canvas-player.js::pauseAll`.
+
 | From | Event | Guard | Effect | To |
 | --- | --- | --- | --- | --- |
-| `—` | `mount` | `playerDocument` present (13) | build DOM, add to `players` (176), observe body + frame (177–178), load frame (179–180) | `BOOTING_*` |
-| `BOOTING_OFFSCREEN` | intersect true | `!ready && !failed` (93) | arm 20 s timer (`showError`) (93–95) | `BOOTING_VISIBLE` |
-| `BOOTING_VISIBLE` | intersect false | — | `clearTimeout`; `player.pause()` (92, 96) | `BOOTING_OFFSCREEN` |
-| `BOOTING_VISIBLE` | timer | `!ready` at fire (158) | `showError('…timed out…')` (94, 158) | `FAILED` |
-| `BOOTING_*` | message `host-ready` | same frame, not failed (117, 119) | `postMessage initialize(document)` (120) | `BOOTING_*` |
-| `BOOTING_*` | message `ready` | not failed | `ready=true`; clear timer; `dataset.ready`; enable controls; send `loop` (130–134) | `READY_PAUSED` |
-| `READY_PAUSED` | Play press | `playing` false (147) | `animations.pauseAll`; `motion.pauseAll`; send `play`; `playing=true` (143–146) | `PLAYING` |
-| `PLAYING` | Play press | `playing` (147) | `send('pause')`; `playing=false` (77) | `READY_PAUSED` |
-| `PLAYING` | other engine starts | — | `pauseAll()` posts `pause` to every player (`animations.js:137`, `motion-canvas-player.js:11`) | `READY_PAUSED` |
-| any live | `document.hidden` | — | `pauseAll()` (184, `animations.js:250`) | `READY_PAUSED` |
-| any live | message `state` | not failed | adopt `time`/`duration`/`playing` (135–140) | `PLAYING`/`READY_PAUSED` |
-| any live | message `error` | not failed (119) | `showError` (127–128) | `FAILED` |
-| any live | `showError` | not already failed (99) | latch; pause; disable; `dataset.error`; **`srcdoc=''`** (107); report once (108–114) | `FAILED` |
-| `FAILED` | retry press | — | reset flags; clear dataset; re-arm 20 s; reload frame (149–160) | `BOOTING_VISIBLE` |
-| any live | figure removed | `!figure.isConnected` (170) | pause; clear timer; `srcdoc=''`; leave `players`; remove listeners (171–174) | `DISPOSED` |
-| `PLAYING` | seek/replay/loop | — | `send('seek' \| 'play' \| 'loop')`; pause first (148, 161–162) | `READY_PAUSED`/`PLAYING` |
+| `—` | `mount` | `playerDocument` present (`mount`'s first check) | build DOM, add to `players`, observe body + frame, load frame (the end of `mount`) | `BOOTING_*` |
+| `BOOTING_OFFSCREEN` | intersect true | `!ready && !failed` (`mount.visibility`) | arm 20 s timer (`showError`) | `BOOTING_VISIBLE` |
+| `BOOTING_VISIBLE` | intersect false | — | `clearTimeout`; `player.pause()` (`mount.visibility`) | `BOOTING_OFFSCREEN` |
+| `BOOTING_VISIBLE` | timer | `!ready` at fire (the retry timer's check) | `showError('…timed out…')` (the `mount.visibility` and retry timers) | `FAILED` |
+| `BOOTING_*` | message `host-ready` | same frame, not failed (`mount.receive`'s source and `failed` checks) | `postMessage initialize(document)` | `BOOTING_*` |
+| `BOOTING_*` | message `ready` | not failed | `ready=true`; clear timer; `dataset.ready`; enable controls; send `loop` (`mount.receive`'s `ready` branch) | `READY_PAUSED` |
+| `READY_PAUSED` | Play press | `playing` false (the play button's `onclick`) | `animations.pauseAll`; `motion.pauseAll`; send `play`; `playing=true` (`mount.start`) | `PLAYING` |
+| `PLAYING` | Play press | `playing` (the play button's `onclick`) | `send('pause')`; `playing=false` (`player.pause`) | `READY_PAUSED` |
+| `PLAYING` | other engine starts | — | `pauseAll()` posts `pause` to every player (`src/blackrose/gui/static/animations.js::pauseAll`, `src/blackrose/gui/static/motion-canvas-player.js::pauseAll`) | `READY_PAUSED` |
+| any live | `document.hidden` | — | `pauseAll()` (the `visibilitychange` listeners of both modules) | `READY_PAUSED` |
+| any live | message `state` | not failed | adopt `time`/`duration`/`playing` (`mount.receive`'s `ready`/`state` branch) | `PLAYING`/`READY_PAUSED` |
+| any live | message `error` | not failed (`mount.receive`) | `showError` (`mount.receive`'s `error` branch) | `FAILED` |
+| any live | `showError` | not already failed (`mount.showError`'s first check) | latch; pause; disable; `dataset.error`; **`srcdoc=''`**; report once (the `options.onFailure` chain) | `FAILED` |
+| `FAILED` | retry press | — | reset flags; clear dataset; re-arm 20 s; reload frame (the retry button's `onclick`) | `BOOTING_VISIBLE` |
+| any live | figure removed | `!figure.isConnected` (`mount.observer`) | pause; clear timer; `srcdoc=''`; leave `players`; remove listeners | `DISPOSED` |
+| `PLAYING` | seek/replay/loop | — | `send('seek' \| 'play' \| 'loop')`; pause first (the replay, seek and loop handlers) | `READY_PAUSED`/`PLAYING` |
 
-Built-in player (`animations.js`): `start` pauses every other engine, resets an
-ended scene, sets `active`, and schedules `tick` (208–214); `pause` cancels the
-frame, restores the button, clears `active` (201–207); `tick` pauses on
-`!isConnected || document.hidden`, advances by wall time with optional modulo
-looping, renders, and pauses at the end or on a render throw (221–233).
+Built-in player (`src/blackrose/gui/static/animations.js::mount`): `start` pauses
+every other engine, resets an ended scene, sets `active`, and schedules `tick`
+(`mount.start`); `pause` cancels the frame, restores the button, clears `active`
+(`mount.pause`); `tick` pauses on `!isConnected || document.hidden`, advances by wall
+time with optional modulo looping, renders, and pauses at the end or on a render throw
+(`mount.tick`).
 
 ### B. Mermaid
 
+Owned by `src/blackrose/gui/static/diagrams.js::renderer`,
+`src/blackrose/gui/static/diagrams.js::render`,
+`src/blackrose/gui/static/diagrams.js::mount`,
+`src/blackrose/gui/static/diagrams.js::settled` and
+`src/blackrose/gui/static/diagrams.js::repairResult`.
+
 | From | Event | Guard | Effect | To |
 | --- | --- | --- | --- | --- |
-| `UNINITIALIZED` | first `render` | cache miss, `current()` (86, 92) | create `frame` (29–34), arm 20 s boot timer (35), listen (63), load `mermaid-host.html` (64), append (65) | `BOOTING` |
-| `BOOTING` | message `ready` | same frame (47) | clear timer; resolve `ready` (48) | `READY_IDLE` |
-| `BOOTING` | boot timer / frame error | — (35, 66) | `fail`: latch `broken`, remove frame, reject `ready` and every job (36–44) | `BROKEN` |
-| `READY_IDLE` | queued job | `current()`, size ≤ 20 000, `!broken`, still cache miss (92–96) | `id = ++sequence`; arm 20 s job timer; post `render` (99–106) | `RENDERING_JOB` |
-| `RENDERING_JOB` | message `result` | known id (50) | resolve with `{svg,label}` or reject with `repairable` (53–61); `remember` (108) | `READY_IDLE` |
-| `RENDERING_JOB` | job timer | — (101) | `frame._fail('Diagram rendering timed out.')` | `BROKEN` |
-| any | `result` with a bad shape | id known (58–61) | reject `'Invalid diagram result.'` | unchanged |
-| `—` | `current()` false after an await | 92, 98, 158 | return `null`; nothing posted | unchanged |
-| figure `OBSERVING` | intersect | first intersection (155) | disconnect, forget, `render` (156–158) | `QUEUED_AND_RENDERING` |
-| `QUEUED_AND_RENDERING` | render resolved | figure connected (159) | create img, attach `load`/`error`, set data URL (160–175) | `IMAGE_LOADING` |
-| `IMAGE_LOADING` | img `load` | connected (163) | `changed(...)`: show viewport, hide source, enable controls (164–168) | `RENDERED_DIAGRAM` |
-| `IMAGE_LOADING` | img `error` | — (170) | status text; show source (171–172) | `FAILED` (no repair) |
-| `QUEUED_AND_RENDERING` | render rejected | connected (177) | status text; store `failure`; `_notifyDiagramFailure` (178–180) | `FAILED_AWAITING_SETTLE` |
-| `FAILED_AWAITING_SETTLE` | `settled(root)` | repairable, `!reported`, `.msg[data-message-id]`, `messageState==='complete'` (133–135) | `reported=true`; `failed(...)` (136) | `REPAIR_REPORTED` |
-| `REPAIR_REPORTED` | result `queued` | `!_diagramRepairSettled` (138) | status "Repairing diagram…" | `REPAIR_REPORTED` |
-| `REPAIR_REPORTED` | result terminal | `repairResult` has a message (198) | rewrite every visible status in that root (199–205) | `REPAIR_REPORTED` |
-| `RENDERED_DIAGRAM` | `repairResult` | `status.hidden` (201) | no-op | `RENDERED_DIAGRAM` |
+| `UNINITIALIZED` | first `render` | cache miss, `current()` (`render`) | create `frame`, arm 20 s boot timer, listen, load `mermaid-host.html`, append (`renderer`) | `BOOTING` |
+| `BOOTING` | message `ready` | same frame (`renderer.receive`'s source check) | clear timer; resolve `ready` | `READY_IDLE` |
+| `BOOTING` | boot timer / frame error | — (the boot `setTimeout` and the frame `error` listener) | `fail`: latch `broken`, remove frame, reject `ready` and every job (`renderer.fail`) | `BROKEN` |
+| `READY_IDLE` | queued job | `current()`, size ≤ 20 000, `!broken`, still cache miss (the checks at the top of the queued task in `render`) | `id = ++sequence`; arm 20 s job timer; post `render` | `RENDERING_JOB` |
+| `RENDERING_JOB` | message `result` | known id (`renderer.receive`) | resolve with `{svg,label}` or reject with `repairable`; `remember` | `READY_IDLE` |
+| `RENDERING_JOB` | job timer | — (the per-job `setTimeout` in `render`) | `frame._fail('Diagram rendering timed out.')` | `BROKEN` |
+| any | `result` with a bad shape | id known (`renderer.receive`'s final `else`) | reject `'Invalid diagram result.'` | unchanged |
+| `—` | `current()` false after an await | the two `current()` checks in `render` and the figure check in `mount`'s render callback | return `null`; nothing posted | unchanged |
+| figure `OBSERVING` | intersect | first intersection (`mount`'s `IntersectionObserver` callback) | disconnect, forget, `render` | `QUEUED_AND_RENDERING` |
+| `QUEUED_AND_RENDERING` | render resolved | figure connected | create img, attach `load`/`error`, set data URL | `IMAGE_LOADING` |
+| `IMAGE_LOADING` | img `load` | connected (the `load` listener) | `changed(...)`: show viewport, hide source, enable controls | `RENDERED_DIAGRAM` |
+| `IMAGE_LOADING` | img `error` | — (the `error` listener) | status text; show source | `FAILED` (no repair) |
+| `QUEUED_AND_RENDERING` | render rejected | connected (the render `catch`) | status text; store `failure`; `_notifyDiagramFailure` | `FAILED_AWAITING_SETTLE` |
+| `FAILED_AWAITING_SETTLE` | `settled(root)` | repairable, `!reported`, `.msg[data-message-id]`, `messageState==='complete'` (`mount._notifyDiagramFailure`'s guard) | `reported=true`; `failed(...)` | `REPAIR_REPORTED` |
+| `REPAIR_REPORTED` | result `queued` | `!_diagramRepairSettled` (`mount._notifyDiagramFailure`) | status "Repairing diagram…" | `REPAIR_REPORTED` |
+| `REPAIR_REPORTED` | result terminal | `repairResult` has a message | rewrite every visible status in that root (`repairResult`) | `REPAIR_REPORTED` |
+| `RENDERED_DIAGRAM` | `repairResult` | `status.hidden` (`repairResult`) | no-op | `RENDERED_DIAGRAM` |
 
 ### C. Interactive UI host
 
+Owned by `ui-runtime/host.jsx::mount`, `ui-runtime/host.jsx::update`,
+`ui-runtime/host.jsx::unmount`, `ui-runtime/host.jsx::flush` and the `host` object
+built in `ui-runtime/host.jsx::render` (`render.host.change`, `render.host.submit`).
+
 | From | Event | Guard | Effect | To |
 | --- | --- | --- | --- | --- |
-| `—` | `mount` | id not mounted (85) | build record; sequence from `state_sequence`; defaults or saved snapshot; `focusout` listener; render (86–92) | `RENDERED`/mode |
-| `—` | `mount` | id already mounted (85) | delegate to `update` | unchanged |
-| `DIRTY*` | `change(key,value)` | — | set/delete key; `dirty=true`; re-arm 250 ms; render (29–33) | `DIRTY_DEBOUNCING` |
-| `DIRTY_DEBOUNCING` | timer | — | `flush().catch(show error)` (32) | `SAVING`/`CLEAN` |
-| `CLEAN`/`DIRTY*` | `focusout` | — | `flush().catch(show error)` (91) | `SAVING` |
-| `SAVING` | another `flush` | `saving` set (72) | await the in-flight save first | `SAVING` |
-| `SAVING` | save ok | `result.ok`, status ready/streaming (73, 79) | `sequence = result.state_sequence` (80) | `CLEAN` |
-| `SAVING` | save refused/throws | — (79, 81) | `dirty=true`; rethrow (`record.error`) | `SAVE_FAILED` |
-| `SAVE_FAILED` | `update(status='ready')` | `dirty` (103) | `flush` again | `SAVING` |
-| `—` | `update(id, block)` | record exists; `source_sequence` not lower (95–96) | merge block; seed defaults once (98–101); render | unchanged |
-| `IDLE` | `submit()` | not disabled, `!submitting` (25, 39) | `submitting=true`; flush; `ui_action` with a fresh `event_id` (40–45) | `SUBMITTING` |
-| `SUBMITTING` | action ok | `result.ok` (45) | — | `IDLE` |
-| `SUBMITTING` | action refused/throws | — (45–46) | `record.error` | `IDLE` |
-| `IDLE` | `submit()` | `disabled` or `submitting` (39) | return without calling the bridge | `IDLE` |
-| any | `unmount` | — (107) | clear debounce, unmount root, forget | `—` |
+| `—` | `mount` | id not mounted (`mount`'s `mounts.has` check) | build record; sequence from `state_sequence`; defaults or saved snapshot; `focusout` listener; render | `RENDERED`/mode |
+| `—` | `mount` | id already mounted | delegate to `update` | unchanged |
+| `DIRTY*` | `change(key,value)` | — | set/delete key; `dirty=true`; re-arm 250 ms; render (`render.host.change`) | `DIRTY_DEBOUNCING` |
+| `DIRTY_DEBOUNCING` | timer | — | `flush().catch(show error)` (the debounce `setTimeout` in `change`) | `SAVING`/`CLEAN` |
+| `CLEAN`/`DIRTY*` | `focusout` | — | `flush().catch(show error)` (the `focusout` listener added in `mount`) | `SAVING` |
+| `SAVING` | another `flush` | `saving` set (`flush`'s first `await`) | await the in-flight save first | `SAVING` |
+| `SAVING` | save ok | `result.ok`, status ready/streaming (`flush`) | `sequence = result.state_sequence` | `CLEAN` |
+| `SAVING` | save refused/throws | — (`flush`'s `catch`) | `dirty=true`; rethrow (`record.error`) | `SAVE_FAILED` |
+| `SAVE_FAILED` | `update(status='ready')` | `dirty` (`update`'s last statement) | `flush` again | `SAVING` |
+| `—` | `update(id, block)` | record exists; `source_sequence` not lower (`update`'s first checks) | merge block; seed defaults once; render | unchanged |
+| `IDLE` | `submit()` | not disabled, `!submitting` (`render`'s `disabled`, `submit`'s guard) | `submitting=true`; flush; `ui_action` with a fresh `event_id` | `SUBMITTING` |
+| `SUBMITTING` | action ok | `result.ok` | — | `IDLE` |
+| `SUBMITTING` | action refused/throws | — (`submit`'s `catch`) | `record.error` | `IDLE` |
+| `IDLE` | `submit()` | `disabled` or `submitting` (`submit`'s guard) | return without calling the bridge | `IDLE` |
+| any | `unmount` | — (`unmount`) | clear debounce, unmount root, forget | `—` |
 
-`disabled` is computed at render time (25): status not `ready`, module `busy`,
+`disabled` is computed at render time (the `disabled` constant in
+`ui-runtime/host.jsx::render`): status not `ready`, module `busy`,
 `!actions_enabled`, or `submitting`. Because `render` is not `flushSync`
-(`flushSync` is only used by the probe-only `sync`, 122), the prop lags the
-state; the transition guard at 39 is what actually serialises submits.
+(`flushSync` is only used by the probe-only `ui-runtime/host.jsx::sync`), the prop
+lags the state; the transition guard in `submit` is what actually serialises submits.
 
 ### D. Main page controller
 
-Turn/composer lock:
+All functions named in these tables are in `src/blackrose/gui/static/bloom.js`;
+anonymous listeners are named by the element they are attached to.
+
+Turn/composer lock (`src/blackrose/gui/static/bloom.js::setBusy`,
+`src/blackrose/gui/static/bloom.js::setRigor`,
+`src/blackrose/gui/static/bloom.js::send`,
+`src/blackrose/gui/static/bloom.js::retryPrompt` and the `el.composer` `submit`
+listener):
 
 | From | Event | Guard | Effect | To |
 | --- | --- | --- | --- | --- |
-| `IDLE` | `status.generating=true` | — (690) | `setBusy(true)`: Stop label, attach/retry disabled, UI `setBusy` (965–980) | `GENERATING` |
-| `IDLE`/`GENERATING` | `reply_start` | — (781) | `setBusy(true)` | `GENERATING` |
-| any | `reply_end` | — (846) | `setBusy(false)` even if the reply is unknown | `IDLE` |
-| `GENERATING` | composer submit | `!rigorPending` (2057) | `call('stop')` (2058) | `GENERATING` until events settle |
-| `IDLE` | composer submit | `!rigorPending` | `send()` (2059) | `GENERATING` after `reply_start` |
-| any | Ctrl/Cmd+Enter | keymap `send` (2289) | `send()` regardless of `busy` (2037) | unchanged (Python refuses) |
-| `IDLE`/`GENERATING` | rigour save starts | `!busy && !rigorPending && mode differs` (1037) | `rigorPending=true`; `rigorTarget=mode`; send/retry disabled; `aria-busy` (1038–1041) | `LOCKED_BY_RIGOR` |
-| `LOCKED_BY_RIGOR` | save settles | — (1046–1051) | clear target/pending; adopt `result.citation_rigor` if ok; re-render | back |
-| any | retry press | `!retryPending && !busy && !rigorPending && can_retry` (2066) | `retryPending`; `call('retry')` | unchanged |
+| `IDLE` | `status.generating=true` | — (`on.status`) | `setBusy(true)`: Stop label, attach/retry disabled, UI `setBusy` (`setBusy`) | `GENERATING` |
+| `IDLE`/`GENERATING` | `reply_start` | — (`on.reply_start`) | `setBusy(true)` | `GENERATING` |
+| any | `reply_end` | — (`on.reply_end`) | `setBusy(false)` even if the reply is unknown | `IDLE` |
+| `GENERATING` | composer submit | `!rigorPending` (the `el.composer` `submit` listener) | `call('stop')` | `GENERATING` until events settle |
+| `IDLE` | composer submit | `!rigorPending` | `send()` | `GENERATING` after `reply_start` |
+| any | Ctrl/Cmd+Enter | keymap `send` (`actions.send`) | `send()` regardless of `busy` (`send`) | unchanged (Python refuses) |
+| `IDLE`/`GENERATING` | rigour save starts | `!busy && !rigorPending && mode differs` (`setRigor`'s first check) | `rigorPending=true`; `rigorTarget=mode`; send/retry disabled; `aria-busy` | `LOCKED_BY_RIGOR` |
+| `LOCKED_BY_RIGOR` | save settles | — (`setRigor`'s `finally`) | clear target/pending; adopt `result.citation_rigor` if ok; re-render | back |
+| any | retry press | `!retryPending && !busy && !rigorPending && can_retry` (`retryPrompt`) | `retryPending`; `call('retry')` | unchanged |
 
-Suggestion popover:
+Suggestion popover (`src/blackrose/gui/static/bloom.js::updateCommandPopover`,
+`src/blackrose/gui/static/bloom.js::closeCommands`,
+`src/blackrose/gui/static/bloom.js::commandKey`,
+`src/blackrose/gui/static/bloom.js::completeCommand`):
 
 | From | Event | Guard | Effect | To |
 | --- | --- | --- | --- | --- |
-| `CLOSED`/`OPEN` | input | `/` prefix (1676–1682) | items = matching commands; draw immediately | `OPEN` |
-| any | input | `@`/`$`/`@{` before the caret (1685–1690) | `closeCommands()`; `epoch=++suggestionEpoch`; 180 ms timer (1673–1694, 1704) | `DEBOUNCING` |
-| `DEBOUNCING` | timer fires | — (1694) | `await reference_suggestions(trigger, query, true)` | `DEBOUNCING` |
-| `DEBOUNCING` | response | `epoch === suggestionEpoch && value === input.value && cursor === selectionStart` (1696) | map items; `drawSuggestions` (1700–1703) | `OPEN` |
+| `CLOSED`/`OPEN` | input | `/` prefix (`updateCommandPopover`'s command branch) | items = matching commands; draw immediately | `OPEN` |
+| any | input | `@`/`$`/`@{` before the caret (`updateCommandPopover`'s reference branch) | `closeCommands()`; `epoch=++suggestionEpoch`; 180 ms timer | `DEBOUNCING` |
+| `DEBOUNCING` | timer fires | — | `await reference_suggestions(trigger, query, true)` | `DEBOUNCING` |
+| `DEBOUNCING` | response | `epoch === suggestionEpoch && value === input.value && cursor === selectionStart` (the response check in `updateCommandPopover`) | map items; `drawSuggestions` | `OPEN` |
 | `DEBOUNCING` | response | any guard false | drop | `CLOSED` |
-| `OPEN` | Escape | popover open and input focused (2318, 1746) | `++epoch`; clear timer; `closeCommands` | `CLOSED` |
-| `OPEN` | pointerdown outside | not in the list and not the input (1750–1752) | close | `CLOSED` |
-| `OPEN` | Tab/Enter on an item | items non-empty (1740–1744) | `completeCommand`: insert reference or command head (1716–1728) | `CLOSED` |
-| `DEBOUNCING` | send / conversations change / browse | 2042, 722, 1654 | `++epoch`; clear timer; close | `CLOSED` |
+| `OPEN` | Escape | popover open and input focused (the document `keydown` listener → `commandKey`) | `++epoch`; clear timer; `closeCommands` | `CLOSED` |
+| `OPEN` | pointerdown outside | not in the list and not the input (the document `pointerdown` listener after `commandKey`) | close | `CLOSED` |
+| `OPEN` | Tab/Enter on an item | items non-empty (`commandKey`) | `completeCommand`: insert reference or command head | `CLOSED` |
+| `DEBOUNCING` | send / conversations change / browse | `send`, `on.conversations`, `drawSuggestions` | `++epoch`; clear timer; close | `CLOSED` |
 
-Modal:
+Modal (`src/blackrose/gui/static/bloom.js::openDialog`,
+`src/blackrose/gui/static/bloom.js::closeDialog`,
+`src/blackrose/gui/static/bloom.js::dialogKey`, and the `el.scrim` `pointerdown`
+listener):
 
 | From | Event | Guard | Effect | To |
 | --- | --- | --- | --- | --- |
-| `CLOSED` | `openDialog` | — (1252) | clone the dialog node (fresh accessible name, 1254–1261); populate; `show(scrim, trigger)`; `app.inert=true`; focus first action (1262–1293) | `OPEN` |
-| `OPEN` | `openDialog` | `state.dialog` (1253) | `closeDialog(false, true)` then open | `OPEN` (new) |
-| `OPEN` | action button | — (1283) | `closeDialog(value)` | `CLOSING` |
-| `OPEN` | `y`/`n` | a `true`-valued button exists (1330–1331) | `closeDialog(true/false)` | `CLOSING` |
-| `OPEN` | Escape | — (1323) | `closeDialog(false)` | `CLOSING` |
-| `OPEN` | Tab | controls non-empty (1324–1328) | wrap focus inside the dialog | `OPEN` |
-| `OPEN` | scrim pointerdown | `e.target === scrim` (1335) | `closeDialog(false)` | `CLOSING` |
-| `CLOSING` | spring rest | reduced motion or ~0.35 s | remove `is-closing`; hide container (1310–1311, `Presence.hide`) | `CLOSED` |
-| `CLOSING` | `openDialog` | — (1288) | `is-closing` removed; spring retargeted to 1 | `OPEN` |
-| any | `closeDialog` | `immediate` (1307) | hide at once, restore focus, run `onClose` | `CLOSED` |
+| `CLOSED` | `openDialog` | — | clone the dialog node (fresh accessible name); populate; `show(scrim, trigger)`; `app.inert=true`; focus first action (`openDialog`) | `OPEN` |
+| `OPEN` | `openDialog` | `state.dialog` (`openDialog`'s first check) | `closeDialog(false, true)` then open | `OPEN` (new) |
+| `OPEN` | action button | — (the action button's click handler in `openDialog`) | `closeDialog(value)` | `CLOSING` |
+| `OPEN` | `y`/`n` | a `true`-valued button exists (`dialogKey`) | `closeDialog(true/false)` | `CLOSING` |
+| `OPEN` | Escape | — (`dialogKey`) | `closeDialog(false)` | `CLOSING` |
+| `OPEN` | Tab | controls non-empty (`dialogKey`) | wrap focus inside the dialog | `OPEN` |
+| `OPEN` | scrim pointerdown | `e.target === scrim` (the `el.scrim` listener) | `closeDialog(false)` | `CLOSING` |
+| `CLOSING` | spring rest | reduced motion or ~0.35 s | remove `is-closing`; hide container (`closeDialog`'s `dialogPresence.hide` callback, `Presence.hide`) | `CLOSED` |
+| `CLOSING` | `openDialog` | — (`openDialog` removes `is-closing`) | `is-closing` removed; spring retargeted to 1 | `OPEN` |
+| any | `closeDialog` | `immediate` (`closeDialog`'s immediate branch) | hide at once, restore focus, run `onClose` | `CLOSED` |
 
 Focus is restored to the trigger (or the composer) and `onClose(value)` runs in
-both the immediate and animated paths (1301–1312); `app.inert` drops
+both the immediate and animated paths (`closeDialog.finish`); `app.inert` drops
 immediately at close, before the fade finishes.
 
-Sidebar:
+Sidebar (`src/blackrose/gui/static/bloom.js::setSidebar`,
+`src/blackrose/gui/static/bloom.js::endDrag`,
+`src/blackrose/gui/static/bloom.js::fitPanes`, and the `el.resizer` listeners
+declared beside `src/blackrose/gui/static/bloom.js::drag`):
 
 | From | Event | Guard | Effect | To |
 | --- | --- | --- | --- | --- |
-| `WIDE_*` | menu toggle | not overlay (1813–1817) | `layout.collapsed = !open`; `save_layout`; `applyPane` | toggled |
-| `WIDE_OPEN` | pointerdown on handle | `button===0 && !overlayMode` (1860) | capture; `drag={id,start,grab,samples}`; `is-resizing` (1863–1866) | `DRAGGING` |
-| `DRAGGING` | pointermove | same pointer id (1869) | rubber-band past the bounds; track samples (1870–1877) | `DRAGGING` |
-| `DRAGGING` | pointerup/cancel | same pointer id (1880) | velocity projection; a fast inward flick collapses and keeps the width (1890–1898); otherwise clamp, persist, spring (1899–1902) | `WIDE_*` |
-| `WIDE_*` | handle keys | (1907–1922) | arrow ±1 rem/3 rem; Home/End bounds; Enter toggles | toggled |
-| `WIDE_*` | dblclick | — (1906) | `layout.width=null`; persist; settle to default | `WIDE_*` |
-| any | breakpoint crossed | `drag` null (1932) | flip `overlayMode`; `overlayOpen=false`; `applyPane({animate:false})` | `OVERLAY_HIDDEN` |
-| `OVERLAY_*` | menu toggle | overlay (1813–1814) | `overlayOpen=open`; `applyPane` (no persist) | toggled |
-| `OVERLAY_SHOWN` | outside pointerdown | not sidebar/menu toggle (1827–1830) | `setSidebar(false)` | `OVERLAY_HIDDEN` |
-| `OVERLAY_SHOWN` | Escape | overlay open (2326) | `setSidebar(false)` | `OVERLAY_HIDDEN` |
-| `OVERLAY_SHOWN` | conversation opened | (1190) | `closeSidebarIfOverlay` | `OVERLAY_HIDDEN` |
+| `WIDE_*` | menu toggle | not overlay (`setSidebar`'s `else`) | `layout.collapsed = !open`; `save_layout`; `applyPane` | toggled |
+| `WIDE_OPEN` | pointerdown on handle | `button===0 && !overlayMode` (the `el.resizer` `pointerdown` listener) | capture; `drag={id,start,grab,samples}`; `is-resizing` | `DRAGGING` |
+| `DRAGGING` | pointermove | same pointer id (the `pointermove` listener) | rubber-band past the bounds; track samples | `DRAGGING` |
+| `DRAGGING` | pointerup/cancel | same pointer id (`endDrag`) | velocity projection; a fast inward flick collapses and keeps the width; otherwise clamp, persist, spring | `WIDE_*` |
+| `WIDE_*` | handle keys | (the `el.resizer` `keydown` listener) | arrow ±1 rem/3 rem; Home/End bounds; Enter toggles | toggled |
+| `WIDE_*` | dblclick | — (the `el.resizer` `dblclick` listener) | `layout.width=null`; persist; settle to default | `WIDE_*` |
+| any | breakpoint crossed | `drag` null (`fitPanes`) | flip `overlayMode`; `overlayOpen=false`; `applyPane({animate:false})` | `OVERLAY_HIDDEN` |
+| `OVERLAY_*` | menu toggle | overlay (`setSidebar`'s overlay branch) | `overlayOpen=open`; `applyPane` (no persist) | toggled |
+| `OVERLAY_SHOWN` | outside pointerdown | not sidebar/menu toggle (the document `pointerdown` listener after `closeSidebarIfOverlay`) | `setSidebar(false)` | `OVERLAY_HIDDEN` |
+| `OVERLAY_SHOWN` | Escape | overlay open (the last branch of the document `keydown` listener) | `setSidebar(false)` | `OVERLAY_HIDDEN` |
+| `OVERLAY_SHOWN` | conversation opened | (`openConversation`) | `closeSidebarIfOverlay` | `OVERLAY_HIDDEN` |
 
-Transcript:
+Transcript (`src/blackrose/gui/static/bloom.js::on.transcript`,
+`src/blackrose/gui/static/bloom.js::loadEarlier`,
+`src/blackrose/gui/static/bloom.js::follow`):
 
 | From | Event | Guard | Effect | To |
 | --- | --- | --- | --- | --- |
-| any | `transcript` | — (731–749) | `++historyEpoch`; pause players; `unmountAll`; clear replies; replace column; welcome or messages; scroll to end | `PINNED` |
-| `IDLE` | earlier button | `aria-busy !== 'true'` (645) | `aria-busy`; text; `epoch=historyEpoch`; `await earlier_messages` | `LOADING` |
-| `LOADING` | page resolves | `epoch === historyEpoch && button.isConnected` (650) | splice older messages; preserve scroll from the bottom; focus; announce (657–670) | `IDLE` |
+| any | `transcript` | — (`on.transcript`) | `++historyEpoch`; pause players; `unmountAll`; clear replies; replace column; welcome or messages; scroll to end | `PINNED` |
+| `IDLE` | earlier button | `aria-busy !== 'true'` (`loadEarlier`) | `aria-busy`; text; `epoch=historyEpoch`; `await earlier_messages` | `LOADING` |
+| `LOADING` | page resolves | `epoch === historyEpoch && button.isConnected` (`loadEarlier`) | splice older messages; preserve scroll from the bottom; focus; announce | `IDLE` |
 | `LOADING` | page is null | same guard | reset button; toast | `IDLE` |
 | `LOADING` | page resolves late | guard false | drop | `IDLE` |
-| `PINNED`/`READING` | scroll | — (2002) | `pinned = nearBottom()` | recomputed |
-| `PINNED` | append/update/dock reflow | `wasAtBottom` or `pinned` (191–198, 1985–1988) | one rAF scroll to `scrollHeight` (`stickPending` coalesces) | `PINNED` |
+| `PINNED`/`READING` | scroll | — (the `el.transcript` `scroll` listener) | `pinned = nearBottom()` | recomputed |
+| `PINNED` | append/update/dock reflow | `wasAtBottom` or `pinned` (`follow`, the `el.dock` `ResizeObserver`) | one rAF scroll to `scrollHeight` (`stickPending` coalesces) | `PINNED` |
 | `READING` | append/update | `wasAtBottom` false | no scroll | `READING` |
 
-Images:
+Images (`src/blackrose/gui/static/bloom.js::imageFrame`,
+`src/blackrose/gui/static/bloom.js::loadImage`,
+`src/blackrose/gui/static/bloom.js::requestStoredImage`,
+`src/blackrose/gui/static/bloom.js::previewObserver`,
+`src/blackrose/gui/static/bloom.js::imageClick`,
+`src/blackrose/gui/static/bloom.js::renderHTML`):
 
 | From | Event | Guard | Effect | To |
 | --- | --- | --- | --- | --- |
-| `ABSENT` | inline `src` | URL is http(s) or a png/jpeg/webp data URL (365) | build button/img/placeholder; `state=loading`; async decode (367–408) | `LOADING` |
-| `ABSENT` | `preview_id` | — (348–355) | observe for intersection (or fetch now) | `ABSENT` |
-| `ABSENT` | intersect | observer not yet unobserved (432–436) | `requestStoredImage` | `LOADING` |
-| `LOADING` (preview) | bridge returns a src | frame still connected (418) | store `imageSrc`; `state=waiting`; `loadImage` | `WAITING` → `LOADING` |
-| `LOADING` (preview) | bridge returns null | connected | `state=error`; retry label (425–427) | `ERROR` |
-| `LOADING` | img `load` | — (388–396) | `state=ready`; reveal; aria labels; `follow(pinned)` | `READY` |
-| `LOADING` | img `error` | — (397–405) | `state=error`; drop img; retry label | `ERROR` |
-| `ERROR` | retry click | `.image-load` (444–447) | `loadImage` again (or re-fetch the preview) | `LOADING` |
-| `READY` | click | `state==='ready'` (449) | open the image dialog | `READY` |
-| any | streaming redraw | same `imageSrc` **and** `imageAlt` (270–273) | adopt the old node object (state and listeners preserved) | unchanged |
+| `ABSENT` | inline `src` | URL is http(s) or a png/jpeg/webp data URL (`loadImage`'s URL check) | build button/img/placeholder; `state=loading`; async decode (`loadImage`) | `LOADING` |
+| `ABSENT` | `preview_id` | — (`imageFrame`) | observe for intersection (or fetch now) | `ABSENT` |
+| `ABSENT` | intersect | observer not yet unobserved (`previewObserver`) | `requestStoredImage` | `LOADING` |
+| `LOADING` (preview) | bridge returns a src | frame still connected (`requestStoredImage`'s `isConnected` check) | store `imageSrc`; `state=waiting`; `loadImage` | `WAITING` → `LOADING` |
+| `LOADING` (preview) | bridge returns null | connected | `state=error`; retry label (`requestStoredImage`) | `ERROR` |
+| `LOADING` | img `load` | — (`loadImage`'s `load` listener) | `state=ready`; reveal; aria labels; `follow(pinned)` | `READY` |
+| `LOADING` | img `error` | — (`loadImage`'s `error` listener) | `state=error`; drop img; retry label | `ERROR` |
+| `ERROR` | retry click | `.image-load` (`imageClick`) | `loadImage` again (or re-fetch the preview) | `LOADING` |
+| `READY` | click | `state==='ready'` (`imageClick`) | open the image dialog | `READY` |
+| any | streaming redraw | same `imageSrc` **and** `imageAlt` (the frame-reuse loop in `renderHTML`) | adopt the old node object (state and listeners preserved) | unchanged |
 
 ## Invariants
 
 1. **At most one player is PLAYING across both engines at any instant**, for
    players the two modules created. Every start entry point pauses the other
-   engine first: `animations.js:137` (plus `BlackroseMotionPlayer.pauseAll`),
-   `animations.js:209`, `motion-canvas-player.js:11, 144`, and
-   `document.hidden` pauses both (184, `animations.js:250`). An unsolicited
-   frame `state` report is adopted without pausing the other engine
-   (`motion-canvas-player.js:135–140`) — see H2. Pinned by
-   `sm22_players.cjs` ("one PLAYING across both engines").
+   engine first: `src/blackrose/gui/static/animations.js::pauseAll` (plus
+   `BlackroseMotionPlayer.pauseAll`), `src/blackrose/gui/static/animations.js::mount.start`,
+   `src/blackrose/gui/static/motion-canvas-player.js::pauseAll` and
+   `src/blackrose/gui/static/motion-canvas-player.js::mount.start`, and
+   `document.hidden` pauses both (the `visibilitychange` listeners of both modules).
+   An unsolicited frame `state` report is adopted without pausing the other engine
+   (the `ready`/`state` branch of
+   `src/blackrose/gui/static/motion-canvas-player.js::mount.receive`) — see H2. Pinned
+   by `sm22_players.cjs` ("one PLAYING across both engines").
 2. **A failed mount is terminal and reported once.** `showError` is idempotent
-   (99), unloads the frame (107), and reports exactly one failure per mount
-   (110–113); the recovery label is monotone: a late `queued` cannot overwrite a
-   later status (61). Pinned by the fail-latch and recovery-routing assertions.
+   (its `failed` check), unloads the frame (`frame.srcdoc = ''`), and reports exactly
+   one failure per mount (the `options.onFailure` chain in
+   `src/blackrose/gui/static/motion-canvas-player.js::mount.showError`); the recovery
+   label is monotone: a late `queued` cannot overwrite a later status (the first check
+   in `src/blackrose/gui/static/motion-canvas-player.js::mount.setRecovery`). Pinned by
+   the fail-latch and recovery-routing assertions.
 3. **A failure report never outlives its figure.** The `onFailure` result is
-   applied only while `figure.isConnected` (112–113); `recovery()` routes by
-   attachment id (185–187). Pinned.
+   applied only while `figure.isConnected` (`mount.showError`); `recovery()` routes by
+   attachment id (`recovery` on `window.BlackroseMotionPlayer` in
+   `src/blackrose/gui/static/motion-canvas-player.js`). Pinned.
 4. **Disposal releases every listener and the frame's execution.** The observer
    removes the player from `players`, removes the `message` and
    `prefers-reduced-motion` listeners, disconnects both observers, pauses and
-   clears `srcdoc` (169–175). Pinned (`sm22_players.cjs` A3).
+   clears `srcdoc` (`src/blackrose/gui/static/motion-canvas-player.js::mount.observer`).
+   Pinned (`sm22_players.cjs` A3).
 5. **Boot time is only counted while the frame is intersecting.**
    `IntersectionObserver` arms the 20 s clock on entry and clears it on exit
-   (91–97). It is *not* gated on page visibility (H1).
+   (`src/blackrose/gui/static/motion-canvas-player.js::mount.visibility`). It is *not*
+   gated on page visibility (H1).
 6. **One Mermaid renderer per page, created at most once.** `renderer()` returns
-   the cached promise (27); `fail` removes the iframe, rejects `ready` and every
-   pending job, and latches `broken` so no replacement is created (36–44, 94).
-   Pinned by `sm22_players.cjs` B2.
+   the cached promise (its first statement); `fail` removes the iframe, rejects
+   `ready` and every pending job, and latches `broken` so no replacement is created
+   (`src/blackrose/gui/static/diagrams.js::renderer.fail` and the `broken` check in
+   `src/blackrose/gui/static/diagrams.js::render`). Pinned by `sm22_players.cjs` B2.
 7. **Mermaid jobs are serialised and one at a time in the frame.** `queue`
-   chains every render (91, 111) and `pending` holds at most one id; the frame
-   itself drops a second `render` while busy (`diagram-runtime/host.js:22–23`).
-   Pinned by B1 ("jobs are serialised").
+   chains every render (`src/blackrose/gui/static/diagrams.js::render`) and `pending`
+   holds at most one id; the frame itself drops a second `render` while busy (the
+   `busy` check in the `message` listener of `diagram-runtime/host.js`). Pinned by B1
+   ("jobs are serialised").
 8. **A queued job never touches a disconnected figure.** `current()` is checked
    before the queue work, again after boot, and before the resolved image is
-   used (92, 98, 158–159); a removed figure never boots the renderer. Pinned by
-   B3.
+   used (the two `current()` checks in `src/blackrose/gui/static/diagrams.js::render`
+   and the `isConnected` check in the render callback of
+   `src/blackrose/gui/static/diagrams.js::mount`); a removed figure never boots the
+   renderer. Pinned by B3.
 9. **A diagram source over 20 000 characters or a non-cache miss is refused
-   before any frame message.** (93, `diagram-runtime/host.js:26`.) Pinned.
+   before any frame message.** (The size check in
+   `src/blackrose/gui/static/diagrams.js::render`; the `maxTextSize` check in
+   `diagram-runtime/host.js`.) Pinned.
 10. **A diagram failure is reported once per mount, and only for a repairable
-    error on a complete message.** `reported` (135) and
-    `message.dataset.messageState === 'complete'` (134) gate the call; an
+    error on a complete message.** `reported` and
+    `message.dataset.messageState === 'complete'` gate the call
+    (`src/blackrose/gui/static/diagrams.js::mount._notifyDiagramFailure`); an
     unrepairable error never reports. Pinned by B1's repair assertions.
 11. **The Mermaid cache is keyed by source only, bounded by count and bytes, and
-    never stores a result over 8 MiB** (`diagrams.js:73–83`). The page's theme
-    and Mermaid version are fixed per page, so the key is sufficient (84–86).
+    never stores a result over 8 MiB** (`src/blackrose/gui/static/diagrams.js::remember`).
+    The page's theme and Mermaid version are fixed per page, so the key is sufficient
+    (the comment at the top of `src/blackrose/gui/static/diagrams.js::render`).
 12. **A UI state save advances `record.sequence` by exactly one per acknowledged
-    save and never overlaps another save** (`host.jsx:72, 75, 80`). The backend
-    enforces `sequence == current + 1` (`repository.py:1060–1063`), so the two
+    save and never overlaps another save** (`ui-runtime/host.jsx::flush`). The backend
+    enforces `sequence == current + 1`
+    (`src/blackrose/storage/repository.py::Repository.save_ui_state`), so the two
     must agree. Pinned by `sm22_ui_host.mjs` 5 and 6.
 13. **A refused save keeps the record dirty and retries the same `sequence + 1`**
-    (`host.jsx:81`); a refused or non-ready flush leaves `dirty` untouched
-    (73). Pinned.
+    (`flush`'s `catch`); a refused or non-ready flush leaves `dirty` untouched
+    (`flush`'s early return in `ui-runtime/host.jsx::flush`). Pinned.
 14. **A submit flushes first and sends one `ui_action` with a fresh `event_id`,
     one identity, `action_id='submit'`, `action_type='continue_conversation'`**
-    (`host.jsx:41–45`). Pinned.
+    (`ui-runtime/host.jsx::render.host.submit`). Pinned.
 15. **The submit lock is the record, not the DOM.** `submit` refuses when
-    `disabled` (captured at render time) *or* `record.submitting` (39). Pinned by
-    the double-submit regression, which failed before this guard was added.
+    `disabled` (captured at render time) *or* `record.submitting` (its first check).
+    Pinned by the double-submit regression, which failed before this guard was added.
 16. **`unmount` clears the debounce and the root and forgets the block; it does
-    not flush** (`host.jsx:107`). Consequence in H3/H4; pinned.
+    not flush** (`ui-runtime/host.jsx::unmount`). Consequence in H3/H4; pinned.
 17. **A model-authored UI document only reaches React as a JSON literal**
-    (`library.jsx:105–108`), never as language or code; the schema hash must
-    equal the artifact's (`host.jsx:19`). Pinned by
+    (`ui-runtime/library.jsx::compile`), never as language or code; the schema hash
+    must equal the artifact's (`ui-runtime/host.jsx::supported`). Pinned by
     `ui-runtime/runtime.test.mjs`.
-18. **The page drops an event for another conversation** (`bloom.js:952–961`).
-    Pinned by the `animation_recovery` assertion in `sm22_bloom.cjs`.
+18. **The page drops an event for another conversation**
+    (`src/blackrose/gui/static/bloom.js::receive`). Pinned by the `animation_recovery`
+    assertion in `sm22_bloom.cjs`.
 19. **The turn lock is exactly `state.busy`, derived only from bridge status and
-    reply events** (`bloom.js:965–980`); a composer submit while locked sends
-    `stop`, never `submit` (2055–2060). Pinned.
+    reply events** (`src/blackrose/gui/static/bloom.js::setBusy`); a composer submit
+    while locked sends `stop`, never `submit` (the `el.composer` `submit` listener).
+    Pinned.
 20. **A rigour save is single-flight and optimistic**: `state.rigorPending` blocks
-    send, retry, and a second save (1037, 975, 983, 2038, 2057); the shown mode
-    is `rigorTarget ?? state.status.citation_rigor` (1010) and a refused save
-    reverts it (1046–1051). Pinned.
+    send, retry, and a second save (`setRigor`'s first check, `setBusy`,
+    `renderControls`, `send` and the composer `submit` listener in
+    `src/blackrose/gui/static/bloom.js`); the shown mode is
+    `rigorTarget ?? state.status.citation_rigor`
+    (`src/blackrose/gui/static/bloom.js::rigorMode`) and a refused save reverts it
+    (`setRigor`'s `finally`). Pinned.
 21. **An effort save is supersedable**: a later press replaces `effortTarget`, and
-    an earlier save cannot clear or report an error over it (`bloom.js:1122–1127`).
-    Pinned.
+    an earlier save cannot clear or report an error over it (the `effortTarget !==
+    next` check in `src/blackrose/gui/static/bloom.js::cycleEffort`). Pinned.
 22. **A suggestion result is applied only if its epoch, the input value and the
-    caret position all still match** (`bloom.js:1696`); every input, Escape,
-    send, conversation change and browse invalidates the epoch (1674, 1746,
-    2042, 722, 1654). Pinned.
+    caret position all still match** (the response check in
+    `src/blackrose/gui/static/bloom.js::updateCommandPopover`); every input, Escape,
+    send, conversation change and browse invalidates the epoch
+    (`updateCommandPopover`, `commandKey`, `send`, `on.conversations`,
+    `drawSuggestions`). Pinned.
 23. **At most one dialog is open, the page is inert while it is, and focus
-    returns to the trigger** (`bloom.js:1253, 1290, 1301–1312`). Pinned.
+    returns to the trigger** (`src/blackrose/gui/static/bloom.js::openDialog`,
+    `src/blackrose/gui/static/bloom.js::closeDialog`). Pinned.
 24. **The sidebar's persisted layout is written only from a user action and only
-    in wide mode** (`bloom.js:1812–1817, 1890–1901, 1906–1921`); overlay toggles
-    never persist. Pinned.
+    in wide mode** (`src/blackrose/gui/static/bloom.js::setSidebar`,
+    `src/blackrose/gui/static/bloom.js::endDrag`, the `el.resizer` `dblclick` and
+    `keydown` listeners); overlay toggles never persist. Pinned.
 25. **A drag flicks shut only for an inward release whose projection lands more
-    than 6 rem past the minimum** (`bloom.js:1886–1898`); otherwise the released
-    width is clamped to `sidebarBounds` and persisted. Pinned.
+    than 6 rem past the minimum** (`src/blackrose/gui/static/bloom.js::endDrag`);
+    otherwise the released width is clamped to `sidebarBounds` and persisted. Pinned.
 26. **An earlier-page response is applied only to the transcript it was requested
-    for** (`bloom.js:648–650`). Pinned.
-27. **Auto-scroll follows only a reader who was at the bottom** (64 px
-    threshold, 184–187); `follow` measures before the mutation and coalesces to
-    one rAF (189–198); a pinned reader is re-pinned across reflows (2001–2005).
+    for** (the epoch check in `src/blackrose/gui/static/bloom.js::loadEarlier`).
     Pinned.
+27. **Auto-scroll follows only a reader who was at the bottom** (64 px
+    threshold, `src/blackrose/gui/static/bloom.js::nearBottom`); `follow` measures
+    before the mutation and coalesces to one rAF
+    (`src/blackrose/gui/static/bloom.js::follow`); a pinned reader is re-pinned across
+    reflows (the `el.transcript` `scroll` listener and `ResizeObserver` beside
+    `src/blackrose/gui/static/bloom.js::pinned`). Pinned.
 28. **An image frame's loader state is `dataset.state`**, one of absent /
     `loading` / `waiting` / `ready` / `error`, and a streaming redraw preserves
-    a frame only when both `imageSrc` and `imageAlt` match (`bloom.js:264–273`),
-    so a load in flight survives the redraw. Pinned.
+    a frame only when both `imageSrc` and `imageAlt` match (the frame-reuse loops in
+    `src/blackrose/gui/static/bloom.js::renderHTML`), so a load in flight survives the
+    redraw. Pinned.
 29. **Generated code stays in an opaque-origin frame.** Both iframes are
     `sandbox="allow-scripts"` with `referrerpolicy="no-referrer"`
-    (`motion-canvas-player.js:17–18`, `diagrams.js:30–32`), neither frame has the
+    (`src/blackrose/gui/static/motion-canvas-player.js::mount`,
+    `src/blackrose/gui/static/diagrams.js::renderer`), neither frame has the
     desktop bridge, and both validate `event.source` and a channel before
     acting. Pinned by `test_sm_22_frontend_runtimes.LoadOrderTests`.
 30. **The page's script order is a load-time contract**: runtimes before
@@ -497,49 +598,61 @@ Images:
 
 ## Hazards and open questions
 
-- **H1 — `fragile` — `motion-canvas-player.js:91–97` with `147–160`.**
+- **H1 — `fragile` — `src/blackrose/gui/static/motion-canvas-player.js::mount.visibility`
+  with the retry button's `onclick` in
+  `src/blackrose/gui/static/motion-canvas-player.js::mount`.**
   The init clock is gated on *intersection*, not page visibility. A minimized
-  window or a hidden document stops WebKit's RAF (the comment at 89–90 says so)
-  while the document is still "intersecting", so the 20 s timer fires and the
-  player reports a timeout for a frame that never had a chance to render.
-  Demonstrated by `sm22_players.cjs` ("hazard: the boot timer runs while the page
-  cannot render"). The retry timer (157–158) is armed without consulting
-  intersection at all; the observer clears it on the next entry/exit event (92).
+  window or a hidden document stops WebKit's RAF (the comment above
+  `mount.visibility` says so) while the document is still "intersecting", so the 20 s
+  timer fires and the player reports a timeout for a frame that never had a chance to
+  render. Demonstrated by `sm22_players.cjs` ("hazard: the boot timer runs while the
+  page cannot render"). The retry timer (armed in the retry `onclick`) is armed
+  without consulting intersection at all; the observer clears it on the next
+  entry/exit event (`clearTimeout` at the top of `mount.visibility`).
   Confirming in the product needs a GTK window minimize/hide during a boot.
   Fix shape: arm the timer only while `isIntersecting && !document.hidden`, and
   re-arm on `visibilitychange`.
-- **H2 — `none-found` (limit) — `motion-canvas-player.js:135–140`.** The
+- **H2 — `none-found` (limit) — the `ready`/`state` branch of
+  `src/blackrose/gui/static/motion-canvas-player.js::mount.receive`.** The
   single-`PLAYING` invariant is enforced cooperatively at start entry points,
   not centrally. A frame that reports `state.playing === true` is believed and
   the page does not pause the other engine, so two players can report playing if
   a frame starts itself (e.g. a looping timeline resumed by the frame). Nothing
-  in the frame can start playback without a command (`motion-canvas-frame.js:142–163`),
-  so this is a structural limit, not a reachable defect. Pinned as such.
-- **H3 — `fragile` — `motion-canvas-player.js:109–113` with `bloom.js:27`.**
+  in the frame can start playback without a command (the control `message` listener
+  in `src/blackrose/gui/static/motion-canvas-frame.js`), so this is a structural
+  limit, not a reachable defect. Pinned as such.
+- **H3 — `fragile` — the `options.onFailure` chain in
+  `src/blackrose/gui/static/motion-canvas-player.js::mount.showError` with
+  `src/blackrose/gui/static/bloom.js::call`.**
   `bloom.call` swallows a bridge rejection and resolves `null`, so
   `options.onFailure` resolves `null`; `setRecovery(null)` clears
   `figure.dataset.recovery` and hides the note instead of showing
-  "Automatic repair is unavailable" (the `.catch` at 113 only covers a genuine
+  "Automatic repair is unavailable" (the chain's `.catch` only covers a genuine
   rejection inside the page). The user sees the failure text with no repair
   status. Demonstrated by `sm22_players.cjs` ("a null result erases the recovery
   label"). Fix shape: treat a null result as `{status:'unavailable'}` in the
   player, or stop swallowing in `bloom.call` for this endpoint.
-- **H4 — `documentation-gap` — `motion-canvas-frame.js:152–157, 62–136`.**
+- **H4 — `documentation-gap` — the `inspect` command branch and the
+  `player.onRender` subscriber in `src/blackrose/gui/static/motion-canvas-frame.js`.**
   `inspection` is only cleared when the rendered frame equals the requested
   frame. If `playback.frame` never reaches it (seek clamped to the 120 s range
   while the measured duration is shorter), `inspection` stays set and the
-  `player.deactivate()` at 136 is skipped for the life of the frame, leaving the
-  RAF loop alive in an opaque frame. Reasoned-only: the request is clamped to the
-  same 120 s range the player is configured with (33), so the frame should
-  always render. Confirming needs a scene whose measured duration is under the
-  requested time by more than a frame.
-- **H5 — `fragile` — `diagrams.js:35–44, 101`.** One slow render (20 s) latches
-  `broken` for the whole page, so every later diagram in every message fails
-  until the window reloads. Deliberate (the comment at 67–69 explains the
-  latency/parser argument), but it couples one pathological diagram to the rest
-  of the conversation. Demonstrated by B2/B3. A narrower fix (replace the frame
-  and retry once) would need a policy decision, so none is proposed.
-- **H6 — `fragile` — `diagrams.js:136–140, 191–206`.** A terminal repair result
+  `player.deactivate()` at the end of the `onRender` subscriber is skipped for the
+  life of the frame, leaving the RAF loop alive in an opaque frame. Reasoned-only: the
+  request is clamped to the same 120 s range the player is configured with (the
+  `range: [0, 120]` passed to `new Player`), so the frame should always render.
+  Confirming needs a scene whose measured duration is under the requested time by more
+  than a frame.
+- **H5 — `fragile` — `src/blackrose/gui/static/diagrams.js::renderer.fail` and the
+  per-job timeout in `src/blackrose/gui/static/diagrams.js::render`.** One slow
+  render (20 s) latches `broken` for the whole page, so every later diagram in every
+  message fails until the window reloads. Deliberate (the comment above
+  `frame._fail = fail` in `renderer` explains the latency/parser argument), but it
+  couples one pathological diagram to the rest of the conversation. Demonstrated by
+  B2/B3. A narrower fix (replace the frame and retry once) would need a policy
+  decision, so none is proposed.
+- **H6 — `fragile` — `src/blackrose/gui/static/diagrams.js::mount._notifyDiagramFailure`,
+  `src/blackrose/gui/static/diagrams.js::repairResult`.** A terminal repair result
   is applied to **every** `figure[data-mermaid]` in the root with a visible
   status, not only the failed figure, and terminal messages are last-writer-wins
   (`_diagramRepairSettled` only suppresses the optimistic label). Two failed
@@ -547,28 +660,31 @@ Images:
   "terminal messages are last-writer-wins inside one root"; confirming user
   impact needs two failures in one reply (Python reports one repair per reply —
   see SM-08).
-- **H7 — `fragile` — `diagrams.js:131–141`.** `reported` latches *before*
-  `failed(...)` resolves. If the bridge returns `null` (a swallowed call), the
-  figure never re-requests repair: `settled()` sees `reported` and stops.
-  Reasoned-only; confirmation needs a bridge failure on `diagram_failed`.
-- **H8 — `defect` (fixed) — `ui-runtime/host.jsx:35–39`.** The submit lock was
-  only the React `disabled` prop, and `render` is not synchronous
-  (`flushSync` is used only by the probe `sync`, 122). Two submits inside one
-  commit both read the captured `disabled === false` and each called
-  `ui_action`; Python refuses the second (`session.py:578–580` returns "Wait for
-  the current reply to finish", or the DB refuses it with "Duplicate or
-  in-flight UI submission", SM-06 H1) and the page shows a spurious error.
-  Demonstrated: the regression assertion reported `3 !== 2` before the guard was
-  added and passes after (`sm22_ui_host.mjs` 8).
-- **H9 — `fragile` — `ui-runtime/host.jsx:70–83, 96`.** Cross-references
-  SM-05 H5. A save that the backend committed but whose reply was lost leaves
-  `record.sequence` one behind; every retry posts the same stale number and is
-  refused (`repository.py:1062–1063`), and `update()` never adopts
-  `block.state_sequence`. Only a remount recovers. Demonstrated end to end
+- **H7 — `fragile` — `src/blackrose/gui/static/diagrams.js::mount._notifyDiagramFailure`.**
+  `reported` latches *before* `failed(...)` resolves. If the bridge returns `null` (a
+  swallowed call), the figure never re-requests repair: `settled()` sees `reported` and
+  stops. Reasoned-only; confirmation needs a bridge failure on `diagram_failed`.
+- **H8 — `defect` (fixed) — `ui-runtime/host.jsx::render.host.submit`.** The submit
+  lock was only the React `disabled` prop, and `render` is not synchronous
+  (`flushSync` is used only by the probe `ui-runtime/host.jsx::sync`). Two submits
+  inside one commit both read the captured `disabled === false` and each called
+  `ui_action`; Python refuses the second (the entry guard of
+  `src/blackrose/gui/session.py::Session.ui_action` returns "Wait for the current
+  reply to finish", or the DB refuses it with "Duplicate or in-flight UI submission",
+  SM-06 H1) and the page shows a spurious error. Demonstrated: the regression
+  assertion failed before the guard was added and passes after
+  (`sm22_ui_host.mjs` 8).
+- **H9 — `fragile` — `ui-runtime/host.jsx::flush`, `ui-runtime/host.jsx::update`.**
+  Cross-references SM-05 H5. A save that the backend committed but whose reply was
+  lost leaves `record.sequence` one behind; every retry posts the same stale number and
+  is refused (the sequence check in
+  `src/blackrose/storage/repository.py::Repository.save_ui_state`), and `update()`
+  never adopts `block.state_sequence`. Only a remount recovers. Demonstrated end to end
   against a sequence-checking fake backend (`sm22_ui_host.mjs` 7). The repair
   belongs with SM-05's proposal (adopt a larger incoming `state_sequence` in
   `update`), so no source change is proposed here.
-- **H10 — `fragile` — `ui-runtime/host.jsx:105–108` with `bloom.js:731–749`.**
+- **H10 — `fragile` — `ui-runtime/host.jsx::unmount`, `ui-runtime/host.jsx::unmountAll`
+  with `src/blackrose/gui/static/bloom.js::on.transcript`.**
   `unmount`/`unmountAll` clear the debounce without flushing, and
   `bloom.on.transcript` calls `unmountAll()` on every redraw. A dirty widget
   torn down by a redraw loses the pending edit. Demonstrated ("unmount clears
@@ -576,73 +692,81 @@ Images:
   would *cause* H9 (a save landing after the redraw's snapshot), so the fix must
   come with H9's sequence adoption: keep the record across a redraw keyed by
   `block_id`, or make the redraw payload authoritative for `state_sequence`.
-- **H11 — `documentation-gap` — `ui-runtime/host.jsx:25`.** `effectsDisabled` is
-  `false || … || record.submitting`, so it is `undefined` until the first submit
-  and React treats it as "not disabled". Any consumer that compares it to
-  `false` or serialises it is wrong. Pinned by `assert.ok(!host.effectsDisabled)`.
-- **H12 — `documentation-gap` — `ui-runtime/host.jsx:98–101`.** `stateInitialized`
-  becomes true as soon as a document exists, so defaults added by a later
-  (final) document are never merged for a widget that streamed with a document.
+- **H11 — `documentation-gap` — the `disabled` constant in `ui-runtime/host.jsx::render`.**
+  `effectsDisabled` is `false || … || record.submitting`, so it is `undefined` until
+  the first submit and React treats it as "not disabled". Any consumer that compares
+  it to `false` or serialises it is wrong. Pinned by `assert.ok(!host.effectsDisabled)`.
+- **H12 — `documentation-gap` — the defaults seeding in `ui-runtime/host.jsx::update`.**
+  `stateInitialized` becomes true as soon as a document exists, so defaults added by a
+  later (final) document are never merged for a widget that streamed with a document.
   Reasoned-only; SM-05 H4 covers the status half of the same window.
-- **H13 — `fragile` — `bloom.js:2037–2060, 2289` with `keymap.json`
-  (`ctrl+enter`, `alt+enter`, `ctrl+s` → `send`).** Those bindings map to
-  `send()` directly while the composer's submit event routes `busy` to `stop()`
-  (2058). The keyboard path therefore calls `submit` during generation; Python
-  refuses with a bell and `{clear:false}` (`session.py:935–937`) and the page
-  restores the draft (`bloom.js:2048–2052`), so nothing is lost, but the two
-  entry points disagree. Demonstrated.
-- **H14 — `fragile` — `bloom.js:1111–1128`.** After a successful effort save the
-  page clears `effortTarget` and re-reads `state.status.reasoning_effort`
-  instead of the `reasoning_effort` the bridge returns
-  (`session.py:1712–1716`). The label shows the previous level until the pushed
-  `status` event arrives — a one-event flicker. Demonstrated ("the label falls
-  back to the last pushed status").
-- **H15 — `fragile` — `bloom.js:1694–1696`.** The debounce result is dropped if
-  the caret moved for an unrelated reason (focus change, programmatic edit, a
-  click that repositions the caret) even though the value still matches; nothing
+- **H13 — `fragile` — `src/blackrose/gui/static/bloom.js::send`, the `el.composer`
+  `submit` listener and `src/blackrose/gui/static/bloom.js::actions.send` with
+  `keymap.json` (`ctrl+enter`, `alt+enter`, `ctrl+s` → `send`).** Those bindings map
+  to `send()` directly while the composer's submit event routes `busy` to `stop()`.
+  The keyboard path therefore calls `submit` during generation; Python refuses with a
+  bell and `{clear:false}` (the busy guard in
+  `src/blackrose/gui/session.py::Session.submit`) and the page restores the draft (the
+  refusal branch of `send`), so nothing is lost, but the two entry points disagree.
+  Demonstrated.
+- **H14 — `fragile` — `src/blackrose/gui/static/bloom.js::cycleEffort`.** After a
+  successful effort save the page clears `effortTarget` and re-reads
+  `state.status.reasoning_effort` instead of the `reasoning_effort` the bridge returns
+  (`src/blackrose/gui/session.py::Session.set_reasoning_effort`). The label shows the
+  previous level until the pushed `status` event arrives — a one-event flicker.
+  Demonstrated ("the label falls back to the last pushed status").
+- **H15 — `fragile` — the debounce callback in
+  `src/blackrose/gui/static/bloom.js::updateCommandPopover`.** The debounce result is
+  dropped if the caret moved for an unrelated reason (focus change, programmatic edit,
+  a click that repositions the caret) even though the value still matches; nothing
   retries until the next keystroke. Reasoned-only.
-- **H16 — `fragile` — `bloom.js:779–788`.** `reply_start` for a key already in
-  `state.replies` overwrites the mapping without removing the earlier article,
-  leaving an `is-streaming` bubble that no later `reply_update`/`reply_end`
-  reaches. No emitter does this today (every `reply_end` deletes the key and
-  `transcript`/`snapshot` clear the map first). Reasoned-only.
-- **H17 — `fragile` — `bloom.js:1879–1902` with `1924–1937`.** `fitPanes`
-  returns early while `drag` is set (`1932`) *after* it may have flipped
-  `overlayMode` and cleared `overlayOpen` (1926–1931). An `endDrag` that follows
-  a window resize across the breakpoint then persists `layout.collapsed` and a
-  width clamped with overlay bounds. Reasoned-only; confirming needs a resize
-  during a drag.
-- **H18 — `fragile` — `bloom.js:1533–1535, 1569–1573`.** Nested-dialog
+- **H16 — `fragile` — `src/blackrose/gui/static/bloom.js::on.reply_start`.**
+  `reply_start` for a key already in `state.replies` overwrites the mapping without
+  removing the earlier article, leaving an `is-streaming` bubble that no later
+  `reply_update`/`reply_end` reaches. No emitter does this today (every `reply_end`
+  deletes the key and `transcript`/`snapshot` clear the map first). Reasoned-only.
+- **H17 — `fragile` — `src/blackrose/gui/static/bloom.js::endDrag` with
+  `src/blackrose/gui/static/bloom.js::fitPanes`.** `fitPanes` returns early while
+  `drag` is set *after* it may have flipped `overlayMode` and cleared `overlayOpen`.
+  An `endDrag` that follows a window resize across the breakpoint then persists
+  `layout.collapsed` and a width clamped with overlay bounds. Reasoned-only;
+  confirming needs a resize during a drag.
+- **H18 — `fragile` — `src/blackrose/gui/static/bloom.js::openEditBackups`,
+  `src/blackrose/gui/static/bloom.js::openWorkspace`.** Nested-dialog
   continuations call `openDialog` (via `openEditBackups`) after an `await`; a
   dialog the user opened during that wait is silently replaced by the
   continuation, because `openDialog` closes the current dialog with value
-  `false` (`1253`) and its `onClose` no-ops. Reasoned-only.
-- **H19 — `fragile` — `bloom.js:363–367, 411–429`.** The image loader has no
+  `false` (its `state.dialog` check) and its `onClose` no-ops. Reasoned-only.
+- **H19 — `fragile` — `src/blackrose/gui/static/bloom.js::loadImage`,
+  `src/blackrose/gui/static/bloom.js::requestStoredImage`.** The image loader has no
   timeout: a frame whose `img` never fires `load`/`error` (or whose preview
   bridge never resolves) stays `loading` with `aria-busy="true"` for the life of
   the frame, and `loadImage` refuses to retry while `dataset.state ===
-  'loading'` (366). A disconnected frame returns early at 418 and leaves the
-  same flags on a discarded node. Reasoned-only; needs a stalled network/bridge.
+  'loading'` (its first check). A disconnected frame returns early (the `isConnected`
+  check in `requestStoredImage`) and leaves the same flags on a discarded node.
+  Reasoned-only; needs a stalled network/bridge.
 - **H20 — `none-found` — the rest of the audited machines.** The dialog
   presence machine (`openDialog`/`closeDialog`/`Presence`), the popover epoch,
   transcript paging and follow, and the sidebar springs are internally
   consistent: closing during the fade is handled by clearing `is-closing` on open
-  (1288), `follow` measures before mutating and coalesces (189–198), and the
-  drag release is idempotent per pointer id (1880). Pinned by the corresponding
+  (`src/blackrose/gui/static/bloom.js::openDialog`), `follow` measures before
+  mutating and coalesces (`src/blackrose/gui/static/bloom.js::follow`), and the
+  drag release is idempotent per pointer id
+  (`src/blackrose/gui/static/bloom.js::endDrag`). Pinned by the corresponding
   `sm22_bloom.cjs` sections.
 
 ## Formalization decisions
 
 One source change:
 
-- **`ui-runtime/host.jsx:35–39` — the submit lock now checks
+- **`ui-runtime/host.jsx::render.host.submit` — the submit lock now checks
   `record.submitting` as well as the captured `disabled`.** This is the smallest
   change that makes the `IDLE -> SUBMITTING` transition's guard real instead of
   an asynchronously-committed DOM attribute (H8). It changes no bridge contract:
   the payload, identity and `event_id` shape are untouched, and a refused second
   submit now produces no call instead of a spurious error. The regression is
   `sm22_ui_host.mjs` section 8 (two synchronous submits → one action), which
-  fails with `3 !== 2` without the guard. The generated bundle
+  fails without the guard. The generated bundle
   (`src/blackrose/gui/static/ui-runtime.js`, `ui-contract.json`) is gitignored;
   the harness bundles `host.jsx` itself, and a prepared app must be rebuilt with
   `npm run build --prefix ui-runtime` to pick the fix up.
@@ -667,75 +791,59 @@ No other source change is proposed:
 
 ## Verification
 
-Run from the repository root.
+Run from the repository root, after
+[checkout setup](../../CONTRIBUTING.md#set-up-a-checkout). The suite for this machine
+runs the three node harnesses and the load-order checks:
 
+```sh
+.venv/bin/python scripts/check_unit_tests.py -p test_sm_22_frontend_runtimes.py -v
 ```
-$ .venv/bin/python scripts/check_unit_tests.py -p test_sm_22_frontend_runtimes.py -v
-test_render_modes_flush_and_submit_locks ... ok
-test_generated_code_stays_in_opaque_origin_frames ... ok
-test_runtimes_load_before_the_page_controller ... ok
-test_locks_savers_popover_dialog_sidebar_and_paging ... ok
-test_animation_players_and_mermaid_lifecycles ... ok
-----------------------------------------------------------------------
-Ran 5 tests in 0.310s
-OK
-```
-
-(Timing varies per machine; the five `ok` lines and `OK` are the result.)
 
 The three harnesses on their own (`node`, offline, no display):
 
-```
-$ node tests/sm22_players.cjs
-Animation player and Mermaid state machines passed.
-$ node tests/sm22_ui_host.mjs
-Interactive UI host state machine passed.
-$ node tests/sm22_bloom.cjs
-Main page controller state machines passed.
+```sh
+node tests/sm22_players.cjs
+node tests/sm22_ui_host.mjs
+node tests/sm22_bloom.cjs
 ```
 
 Pre-existing focused tests for the same modules:
 
-```
-$ .venv/bin/python scripts/check_unit_tests.py -p test_animations.py        # Ran 35 tests ... OK
-$ .venv/bin/python scripts/check_unit_tests.py -p test_motion_canvas.py     # Ran 11 tests ... OK (skipped=3)
-$ .venv/bin/python scripts/check_unit_tests.py -p test_diagrams.py          # Ran 6 tests ... OK
-$ .venv/bin/python scripts/check_unit_tests.py -p test_diagram_repairs.py   # Ran 11 tests ... OK
-$ .venv/bin/python scripts/check_unit_tests.py -p test_interactive_ui_evaluation.py  # Ran 5 ... OK
-$ .venv/bin/python scripts/check_unit_tests.py -p test_interactive_ui_fidelity.py    # Ran 8 ... OK
-$ .venv/bin/python scripts/check_unit_tests.py -p test_conversation_paging.py        # Ran 11 ... OK
-$ .venv/bin/python scripts/check_unit_tests.py -p test_chat_navigation.py            # Ran 7 ... OK
-$ .venv/bin/python scripts/check_unit_tests.py -p test_effort.py                     # Ran 14 ... OK
-$ .venv/bin/python scripts/check_unit_tests.py -p test_composer_drafts.py            # Ran 11 ... OK
+```sh
+.venv/bin/python scripts/check_unit_tests.py -p test_animations.py
+.venv/bin/python scripts/check_unit_tests.py -p test_motion_canvas.py
+.venv/bin/python scripts/check_unit_tests.py -p test_diagrams.py
+.venv/bin/python scripts/check_unit_tests.py -p test_diagram_repairs.py
+.venv/bin/python scripts/check_unit_tests.py -p test_interactive_ui_evaluation.py
+.venv/bin/python scripts/check_unit_tests.py -p test_interactive_ui_fidelity.py
+.venv/bin/python scripts/check_unit_tests.py -p test_conversation_paging.py
+.venv/bin/python scripts/check_unit_tests.py -p test_chat_navigation.py
+.venv/bin/python scripts/check_unit_tests.py -p test_effort.py
+.venv/bin/python scripts/check_unit_tests.py -p test_composer_drafts.py
 ```
 
 Static and bundle checks:
 
-```
-$ node --check src/blackrose/gui/static/bloom.js            # ok
-$ node --check src/blackrose/gui/static/diagrams.js         # ok
-$ node --check src/blackrose/gui/static/animations.js       # ok
-$ node --check src/blackrose/gui/static/motion-canvas-player.js  # ok
-$ node --check src/blackrose/gui/static/motion-canvas-frame.js   # ok
-$ npm test --prefix ui-runtime                              # tests 1, pass 1, fail 0
-$ .venv/bin/python -m ruff check tests/test_sm_22_frontend_runtimes.py  # All checks passed
-```
-
-The regression proof for H8 was taken by reverting the guard locally and
-re-running `node tests/sm22_ui_host.mjs`:
-
-```
-AssertionError [ERR_ASSERTION]: one action for two rapid submits
-3 !== 2
+```sh
+node --check src/blackrose/gui/static/bloom.js
+node --check src/blackrose/gui/static/diagrams.js
+node --check src/blackrose/gui/static/animations.js
+node --check src/blackrose/gui/static/motion-canvas-player.js
+node --check src/blackrose/gui/static/motion-canvas-frame.js
+npm test --prefix ui-runtime
+.venv/bin/python -m ruff check tests/test_sm_22_frontend_runtimes.py
 ```
 
-**Not run here.** The native and browser probes need a display and packages this
-machine does not have (`scripts/check_interactive_ui.cjs`,
-`check_diagrams.cjs`, `check_effort.cjs`, `check_conversation_paging.cjs`,
-`check_history_paging.cjs`, `check_chat_navigation.cjs`,
-`check_reading_room.cjs`, and `scripts/check_gui_*.py --gui`, which need
-`xvfb-run`/GTK/WebKit). `scripts/check_health.py` was not run as a whole (it
-includes the full unit suite and mypy); the parts that cover this change were
-run individually as listed. The three node harnesses are the offline replacement
-for those probes' state-machine assertions, not for their rendering/visual
-assertions.
+The full offline gate is `.venv/bin/python scripts/check_health.py`.
+
+To reproduce the H8 regression, revert the `record.submitting` guard in
+`ui-runtime/host.jsx::render.host.submit` and rerun `node tests/sm22_ui_host.mjs`;
+the "one action for two rapid submits" assertion fails.
+
+The native and browser probes need a display: `scripts/check_interactive_ui.cjs`,
+`scripts/check_diagrams.cjs`, `scripts/check_effort.cjs`,
+`scripts/check_conversation_paging.cjs`, `scripts/check_history_paging.cjs`,
+`scripts/check_chat_navigation.cjs`, `scripts/check_reading_room.cjs`, and the
+`scripts/check_gui_*.py --gui` probes, which need `xvfb-run`/GTK/WebKit. The three
+node harnesses are the offline replacement for those probes' state-machine
+assertions, not for their rendering/visual assertions.
