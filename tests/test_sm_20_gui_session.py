@@ -356,6 +356,22 @@ class GenerationSlotTests(SessionFixture):
         self.assertIsNone(self.session._generation)
         release.set()
 
+    async def test_submit_and_retry_refuse_once_quit_is_requested(self):
+        # H4: close() sets _quit_requested and then keeps awaiting, so a send or
+        # retry can arrive while it shuts down. Neither may take the slot.
+        await self.session.submit('Stored question')
+        await self.session._generation
+        finished = self.session._generation
+        self.session._draft_text = 'typed while closing'
+        self.session._quit_requested = True
+        self.events.clear()
+        self.assertEqual(await self.session.submit('Sent while closing'), {'clear': False})
+        self.assertFalse(await self.session.retry())
+        self.assertEqual(self.kinds(), ['bell', 'bell'])
+        self.assertIs(self.session._generation, finished)
+        self.assertEqual(self.session._draft_text, 'typed while closing')
+        self.assertEqual(len(await self.controller.current_messages()), 2)
+
     async def test_retry_reservation_is_stoppable_before_it_reads_anything(self):
         await self.session.submit('Stored question')
         await self.session._generation
