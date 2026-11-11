@@ -4,11 +4,11 @@
 
 | Surface | Files | Owner |
 | --- | --- | --- |
-| Line framing | `src/blackrose/backend/stream_limits.py:86-149` (`sse_lines`) | The provider client that opened the HTTP response |
-| Wire validation and resource bounds | `src/blackrose/backend/stream_limits.py:13-61` (`StreamLimitExceeded`, `StreamBounds`, `StreamBudget`), `:64-83` (`bounded_choices`) | The reply (one budget per reply, passed to every provider request) |
-| Protocol decoding | `src/blackrose/backend/opencode_protocols.py:145-300` (`StreamDecoder`) | The OpenCode Go request that created it (`src/blackrose/backend/opencode.py:125-143`) |
-| Local wire decoding | `src/blackrose/backend/router.py:173-228` (`RouterClient.stream`) | The local router request |
-| Downstream call/finish reconciliation | `src/blackrose/turns.py:115-183`, `:616-663`, `:691-711` | The turn (`TurnRunner`) |
+| Line framing | `src/blackrose/backend/stream_limits.py::sse_lines` | The provider client that opened the HTTP response |
+| Wire validation and resource bounds | `src/blackrose/backend/stream_limits.py::StreamLimitExceeded`, `src/blackrose/backend/stream_limits.py::StreamBounds`, `src/blackrose/backend/stream_limits.py::StreamBudget`, `src/blackrose/backend/stream_limits.py::bounded_choices` | The reply (one budget per reply, passed to every provider request) |
+| Protocol decoding | `src/blackrose/backend/opencode_protocols.py::StreamDecoder` | The OpenCode Go request that created it (`src/blackrose/backend/opencode.py::OpenCodeGoClient.stream`) |
+| Local wire decoding | `src/blackrose/backend/router.py::RouterClient.stream` | The local router request |
+| Downstream call/finish reconciliation | `src/blackrose/turns.py::RoundOutput`, `src/blackrose/turns.py::collect_tool_call`, `src/blackrose/turns.py::require_normal_finish`, `src/blackrose/turns.py::TurnRunner._stream_round`, `src/blackrose/turns.py::TurnRunner._run_tools` | The turn (`TurnRunner`) |
 
 Ownership notes:
 
@@ -17,70 +17,78 @@ Ownership notes:
   response inside one asyncio task. No database column, JSON blob or file
   represents them, and none is shared between tasks.
 - `StreamBudget` is the one object with a wider lifetime: it is constructed once
-  per reply (`src/blackrose/turns.py:527`), stored on `ReplyContext.budget`
-  (`turns.py:102-110`) and passed to every provider request in that reply
-  (`turns.py:626-628`), including the repair substream
-  (`src/blackrose/repairs.py:6-25`). Its counters are monotonic by design
-  (`stream_limits.py:27`).
+  per reply (`src/blackrose/turns.py::TurnRunner._start_reply`), stored on `ReplyContext.budget`
+  (`src/blackrose/turns.py::ReplyContext`) and passed to every provider request in that reply
+  (`src/blackrose/turns.py::TurnRunner._stream_round`), including the repair substream
+  (`src/blackrose/repairs.py::repair_text`). Its counters are monotonic by design
+  (the `src/blackrose/backend/stream_limits.py::StreamBudget` docstring).
 - The only *persisted* consequence is `_provider_content`: `StreamDecoder.end`
-  returns `{'protocol', 'content'}` (`opencode_protocols.py:161-162`), the turn
-  stores it in `RoundOutput.provider_content` (`turns.py:636-637`) and
+  returns `{'protocol', 'content'}` (`src/blackrose/backend/opencode_protocols.py::StreamDecoder.end`), the turn
+  stores it in `RoundOutput.provider_content` (`src/blackrose/turns.py::TurnRunner._stream_round`) and
   `Providers.continuation` copies it onto the assistant wire message
-  (`backend/providers.py:74-80`), where `prepare` replays it as native provider
-  content (`opencode_protocols.py:64-65`, `:89-90`, `:123-124`).
+  (`src/blackrose/backend/providers.py::ChatProviders.continuation`), where `prepare` replays it as native provider
+  content (`src/blackrose/backend/opencode_protocols.py::_prepare`, once per protocol).
 - All mutation happens on the event loop. The only ordering points that yield to
   other tasks are `asyncio.sleep(0)` every 32 lines/chunks
-  (`stream_limits.py:131-133`, `:82-83`) and the `await` on the next chunk/choice.
+  (`src/blackrose/backend/stream_limits.py::sse_lines`, `src/blackrose/backend/stream_limits.py::bounded_choices`) and the `await` on the next chunk/choice.
   There is no lock and none is needed.
 - Cancellation (Stop) propagates into the async generator; `async with
-  self.client.stream(...)` (`opencode.py:129`) and `aclosing`
-  (`stream_limits.py:68`) close the response. The decoder is then discarded with
+  self.client.stream(...)` (`src/blackrose/backend/opencode.py::OpenCodeGoClient.stream`) and `aclosing`
+  (`src/blackrose/backend/stream_limits.py::bounded_choices`) close the response. The decoder is then discarded with
   `completed=False`; nothing has to be released.
 - `StreamDecoder` is also subclassed for acceptance evidence
-  (`scripts/accept_opencode_go.py:457-489`), which reads only `feed`,
+  (`scripts/accept_opencode_go.py::observed_decoder.ObservedDecoder`), which reads only `feed`,
   `completed` and `native`.
 
 ## State variables
 
 ### `sse_lines` (frames one HTTP response)
 
-| Variable | Location | Type | Meaning | Writers |
-| --- | --- | --- | --- | --- |
-| `pending` | `stream_limits.py:89` | `bytearray` | Bytes of the current line that have not seen `\r`/`\n` yet | `:119` append, `:123` clear |
-| `first_line` | `stream_limits.py:90` | `bool` | The next yielded line is still the first one, so a leading BOM is removed | `:129`, `:148` |
-| `skip_lf` | `stream_limits.py:91` | `bool` | The previous chunk ended exactly after `\r`; a `\n` opening the next non-empty chunk belongs to that CRLF | `:109`, `:140` |
-| `line_count` | `stream_limits.py:92` | `int` | Cooperative-yield counter | `:131` |
-| `chunk`, `start`, `newline` | `:97`, `:105`, `:112` | locals | Current chunk and scan position | loop locals |
+All are locals of `src/blackrose/backend/stream_limits.py::sse_lines`.
+
+| Variable | Type | Meaning | Writers |
+| --- | --- | --- | --- |
+| `pending` | `bytearray` | Bytes of the current line that have not seen `\r`/`\n` yet | appended with each line segment, cleared when a line is yielded |
+| `first_line` | `bool` | The next yielded line is still the first one, so a leading BOM is removed | cleared when the first line (or the final partial line) is yielded |
+| `skip_lf` | `bool` | The previous chunk ended exactly after `\r`; a `\n` opening the next non-empty chunk belongs to that CRLF | cleared at the next non-empty chunk; set when a chunk ends in `\r` |
+| `line_count` | `int` | Cooperative-yield counter | incremented per yielded line |
+| `chunk`, `start`, `newline` | locals | Current chunk and scan position | loop locals |
 
 ### `StreamBudget` (one reply)
 
-| Variable | Location | Type | Meaning | Writers |
-| --- | --- | --- | --- | --- |
-| `bounds` | `stream_limits.py:30` | `StreamBounds` | Frozen limits (`:17-23`) | constructor |
-| `deadline` | `stream_limits.py:31` | `float` | Absolute loop time; `now + duration_seconds`, fixed at construction | constructor |
-| `response_bytes` | `stream_limits.py:32` | `int` | Raw bytes read off the wire, before framing | `:44` |
-| `reply_bytes` | `stream_limits.py:33` | `int` | UTF-8 bytes of visible answer text, tool names/ids/arguments | `:56` (from `turns.py:148-153`, `repairs.py:16-24`) |
-| `reasoning_bytes` | `stream_limits.py:34` | `int` | UTF-8 bytes of reasoning text | `:53` |
+All are attributes set in `src/blackrose/backend/stream_limits.py::StreamBudget.__init__`.
+
+| Variable | Type | Meaning | Writers |
+| --- | --- | --- | --- |
+| `bounds` | `StreamBounds` | Frozen limits (`src/blackrose/backend/stream_limits.py::StreamBounds`) | constructor |
+| `deadline` | `float` | Absolute loop time; `now + duration_seconds`, fixed at construction | constructor |
+| `response_bytes` | `int` | Raw bytes read off the wire, before framing | `src/blackrose/backend/stream_limits.py::StreamBudget.add_response_bytes` |
+| `reply_bytes` | `int` | UTF-8 bytes of visible answer text, tool names/ids/arguments | `src/blackrose/backend/stream_limits.py::StreamBudget.add_output` (from `src/blackrose/turns.py::collect_tool_call`, `src/blackrose/repairs.py::repair_text`) |
+| `reasoning_bytes` | `int` | UTF-8 bytes of reasoning text | `src/blackrose/backend/stream_limits.py::StreamBudget.add_output` |
 
 ### `StreamDecoder` (one provider response)
 
-| Variable | Location | Type | Meaning | Writers |
-| --- | --- | --- | --- | --- |
-| `protocol` | `opencode_protocols.py:147` | `'chat' \| 'messages' \| 'responses' \| 'google'` | Selects the branch in `feed` | constructor (`opencode.py:119`) |
-| `completed` | `:148` | `bool` | A finish reason has been recorded; the backend boundary requires it (`opencode.py:142-143`) | `feed` chat (`:176`), `end` (`:160`) |
-| `blocks` | `:149` | `dict[int, dict]` | **Open** Anthropic content blocks by index (after this change) | `:226` add, `:251` pop |
-| `arguments` | `:150` | `dict[int, str]` | Partial JSON of an open `tool_use` block | `:228` init, `:246` append, `:253` pop |
-| `native` | `:151` | `list[dict]` | Provider-native history for the next request | `:254` (messages), `:285` (responses), `:191` (google) |
-| `finish` | `:152` | `str \| None` | Normalized stop reason; **unused on the `chat` branch** | `:265` |
-| `calls` | `:153` | `int` | Count of tool calls opened (`responses`) or emitted (`google`) | `:278`, `:198` |
-| `usage` | `:154` | `dict` | Normalized `prompt_tokens`/`completion_tokens` | `:219-220`, `:257`, `:186-187`, `:289-290` |
+All are attributes set in `src/blackrose/backend/opencode_protocols.py::StreamDecoder.__init__`.
+
+| Variable | Type | Meaning | Writers |
+| --- | --- | --- | --- |
+| `protocol` | `'chat' \| 'messages' \| 'responses' \| 'google'` | Selects the branch in `feed` | constructor (`src/blackrose/backend/opencode.py::OpenCodeGoClient.stream`) |
+| `completed` | `bool` | A finish reason has been recorded; the backend boundary requires it (`src/blackrose/backend/opencode.py::OpenCodeGoClient.stream`) | `src/blackrose/backend/opencode_protocols.py::StreamDecoder.feed` (chat branch), `src/blackrose/backend/opencode_protocols.py::StreamDecoder.end` |
+| `blocks` | `dict[int, dict]` | **Open** Anthropic content blocks by index (after this change) | `src/blackrose/backend/opencode_protocols.py::StreamDecoder.anthropic`: add on `content_block_start`, pop on `content_block_stop` |
+| `arguments` | `dict[int, str]` | Partial JSON of an open `tool_use` block | `src/blackrose/backend/opencode_protocols.py::StreamDecoder.anthropic`: init on start, append on delta, pop on stop |
+| `native` | `list[dict]` | Provider-native history for the next request | `src/blackrose/backend/opencode_protocols.py::StreamDecoder.anthropic` (messages), `src/blackrose/backend/opencode_protocols.py::StreamDecoder.responses` (responses), `src/blackrose/backend/opencode_protocols.py::StreamDecoder.feed` (google) |
+| `finish` | `str \| None` | Normalized stop reason; **unused on the `chat` branch** | `src/blackrose/backend/opencode_protocols.py::StreamDecoder.anthropic` (`message_delta`) |
+| `calls` | `int` | Count of tool calls opened (`responses`) or emitted (`google`) | `src/blackrose/backend/opencode_protocols.py::StreamDecoder.responses`, `src/blackrose/backend/opencode_protocols.py::StreamDecoder.feed` (google) |
+| `usage` | `dict` | Normalized `prompt_tokens`/`completion_tokens` | `anthropic` (`message_start`, `message_delta`), `feed` (google), `responses` (terminal event) |
 
 ### `RouterClient.stream` (one local response)
 
-| Variable | Location | Type | Meaning | Writers |
-| --- | --- | --- | --- | --- |
-| `completed` | `router.py:184` | `bool` | A choice carried `finish_reason` | `:226` |
-| `saw_calls` | `router.py:185` | `bool` | A tool-call delta was seen anywhere in the stream | `:219` |
+Both are locals of `src/blackrose/backend/router.py::RouterClient.stream`.
+
+| Variable | Type | Meaning | Writers |
+| --- | --- | --- | --- |
+| `completed` | `bool` | A choice carried `finish_reason` | per choice |
+| `saw_calls` | `bool` | A tool-call delta was seen anywhere in the stream | per choice |
 
 ## States
 
@@ -122,23 +130,23 @@ That is the reason the pre-existing duplicate-stop defect was silent (H1).
 | --- | --- |
 | `NO_CALL` | `RoundOutput.calls == {}` |
 | `CALL_OPEN` | an entry exists whose `function.arguments` is still growing |
-| `CALL_READY` | the stream ended; `require_normal_finish` compares `bool(calls)` with the reason (`turns.py:179-181`) |
+| `CALL_READY` | the stream ended; `require_normal_finish` compares `bool(calls)` with the reason (`src/blackrose/turns.py::require_normal_finish`) |
 
 ## Events
 
 | Event | Source | Enters at |
 | --- | --- | --- |
-| Byte chunk from the wire | `response.aiter_bytes()` | `sse_lines` (`stream_limits.py:97`) |
-| Upstream exhaustion | `StopAsyncIteration` | `sse_lines:98`, `bounded_choices:74` |
-| Deadline exceeded | `asyncio.timeout_at` / `check_time` | `sse_lines:94-103`, `turns.py:629` |
-| Budget exceeded | byte counters | `stream_limits.py:42-61` |
-| SSE line | framing output | `opencode.py:132-141`, `router.py:204-207` |
-| `data:` payload terminated by a blank line | blank SSE line | `opencode.py:135-138` (feeds the decoder) |
-| `[DONE]` | literal payload | `StreamDecoder.feed:165`, `router.py:208` |
-| JSON packet | `json.loads` | `feed:169`, branch dispatch `:173-183` |
-| Provider error packet | `error` / `type == 'error'` | `feed:170-172`, `router.py:213-214` |
-| `end(reason)` | messages `message_stop`, responses `completed`/`incomplete`, google `finishReason` | `:156`, `:207`, `:267`, `:295-297` |
-| EOF of the HTTP body | iterator exhaustion | `opencode.py:139-143`, `router.py:227-228` |
+| Byte chunk from the wire | `response.aiter_bytes()` | `src/blackrose/backend/stream_limits.py::sse_lines` |
+| Upstream exhaustion | `StopAsyncIteration` | `sse_lines`, `bounded_choices` |
+| Deadline exceeded | `asyncio.timeout_at` / `check_time` | `sse_lines`, `src/blackrose/turns.py::TurnRunner._stream_round` |
+| Budget exceeded | byte counters | `src/blackrose/backend/stream_limits.py::StreamBudget.add_response_bytes`, `src/blackrose/backend/stream_limits.py::StreamBudget.add_output` |
+| SSE line | framing output | `src/blackrose/backend/opencode.py::OpenCodeGoClient.stream`, `src/blackrose/backend/router.py::RouterClient.stream` |
+| `data:` payload terminated by a blank line | blank SSE line | `src/blackrose/backend/opencode.py::OpenCodeGoClient.stream` (feeds the decoder) |
+| `[DONE]` | literal payload | `src/blackrose/backend/opencode_protocols.py::StreamDecoder.feed`, `src/blackrose/backend/router.py::RouterClient.stream` |
+| JSON packet | `json.loads` | `feed`, then its branch dispatch |
+| Provider error packet | `error` / `type == 'error'` | `feed`, `src/blackrose/backend/router.py::RouterClient.stream` |
+| `end(reason)` | messages `message_stop`, responses `completed`/`incomplete`, google `finishReason` | `src/blackrose/backend/opencode_protocols.py::StreamDecoder.end`, called from `anthropic`, `responses` and the google branch of `feed` |
+| EOF of the HTTP body | iterator exhaustion | `src/blackrose/backend/opencode.py::OpenCodeGoClient.stream`, `src/blackrose/backend/router.py::RouterClient.stream` |
 | Cancellation / Stop | task cancel | generator close |
 
 ## Transition table
@@ -147,217 +155,227 @@ That is the reason the pre-existing duplicate-stop defect was silent (H1).
 
 | from | event | guard | effect | to |
 | --- | --- | --- | --- | --- |
-| `START`/`BODY` | chunk | no `\r`/`\n` in chunk | append chunk to `pending` (`:119`) | `FIRST_PARTIAL`/`BODY` |
-| `FIRST_PARTIAL`/`BODY` | chunk | terminator found | append head, yield assembled line (`:119-130`) | `BODY` |
-| any | chunk | terminator is `\n` | `start = newline + 1` (`:135`) | `BODY` |
-| any | chunk | terminator is `\r`, next byte in chunk is `\n` | consume both (`:137-138`) | `BODY` |
-| any | chunk | terminator is `\r`, more bytes follow in chunk | `start = newline + 1` (`:135-136`) | `BODY` |
-| any | chunk | terminator is `\r` and it is the last byte | `skip_lf = True` (`:139-140`) | `CR_BOUNDARY` |
-| `CR_BOUNDARY` | non-empty chunk starting with `\n` | `:106-108` | `start = 1`; swallowed LF is **not** a line | `BODY` |
-| `CR_BOUNDARY` | non-empty chunk not starting with `\n` | `:109` | `start = 0` | `BODY` |
-| `CR_BOUNDARY` | empty chunk | `if skip_lf and chunk` is false (`:106`) | `skip_lf` preserved | `CR_BOUNDARY` |
-| any | chunk | `len(pending) + segment > sse_line_bytes` | raise `StreamLimitExceeded` **before** appending (`:115-118`) | unchanged |
-| any | chunk | `response_bytes + len(chunk) > response_bytes` | raise (`:104` → `:42-48`) | unchanged |
-| any | top of loop | `now >= deadline` | raise (`:94` → `:36-40`) | unchanged |
-| any | await next chunk | `asyncio.timeout_at` fires | raise `StreamLimitExceeded` (`:100-103`) | unchanged |
-| `FIRST_PARTIAL`/`BODY` | EOF | `pending != b''` | yield `pending` before returning (`:145-149`) | `EXHAUSTED` |
-| `BODY` | EOF | `pending == b''` | return (`:98-99`) | `EXHAUSTED` |
-| `CR_BOUNDARY` | EOF | — | return; `skip_lf` is dropped (`:98-99`) | `EXHAUSTED` |
+| `START`/`BODY` | chunk | no `\r`/`\n` in chunk | append chunk to `pending` | `FIRST_PARTIAL`/`BODY` |
+| `FIRST_PARTIAL`/`BODY` | chunk | terminator found | append head, yield assembled line | `BODY` |
+| any | chunk | terminator is `\n` | `start = newline + 1` | `BODY` |
+| any | chunk | terminator is `\r`, next byte in chunk is `\n` | consume both | `BODY` |
+| any | chunk | terminator is `\r`, more bytes follow in chunk | `start = newline + 1` | `BODY` |
+| any | chunk | terminator is `\r` and it is the last byte | `skip_lf = True` | `CR_BOUNDARY` |
+| `CR_BOUNDARY` | non-empty chunk starting with `\n` | `skip_lf and chunk` | `start = 1`; swallowed LF is **not** a line | `BODY` |
+| `CR_BOUNDARY` | non-empty chunk not starting with `\n` | `skip_lf and chunk` | `start = 0` | `BODY` |
+| `CR_BOUNDARY` | empty chunk | `if skip_lf and chunk` is false | `skip_lf` preserved | `CR_BOUNDARY` |
+| any | chunk | `len(pending) + segment > sse_line_bytes` | raise `StreamLimitExceeded` **before** appending | unchanged |
+| any | chunk | `response_bytes + len(chunk) > response_bytes` | raise (`src/blackrose/backend/stream_limits.py::StreamBudget.add_response_bytes`) | unchanged |
+| any | top of loop | `now >= deadline` | raise (`src/blackrose/backend/stream_limits.py::StreamBudget.check_time`) | unchanged |
+| any | await next chunk | `asyncio.timeout_at` fires | raise `StreamLimitExceeded` | unchanged |
+| `FIRST_PARTIAL`/`BODY` | EOF | `pending != b''` | yield `pending` before returning | `EXHAUSTED` |
+| `BODY` | EOF | `pending == b''` | return | `EXHAUSTED` |
+| `CR_BOUNDARY` | EOF | — | return; `skip_lf` is dropped | `EXHAUSTED` |
 
-The first yielded line additionally loses one leading `\ufeff` (`:127-129`), and a
-final partial line loses it too (`:147-148`). Lines are decoded per assembled
+The first yielded line additionally loses one leading `\ufeff`, and a
+final partial line loses it too. Lines are decoded per assembled
 line, never per chunk, so a multi-byte character or BOM split across chunks is
 assembled before decoding.
 
 ### S/B: `StreamDecoder.feed` — dispatch
 
+All in `src/blackrose/backend/opencode_protocols.py::StreamDecoder.feed` unless named.
+
 | from | event | guard | effect | to |
 | --- | --- | --- | --- | --- |
-| any | `data == '[DONE]'` | `completed` | return `[]` (`:165-168`) | unchanged |
-| any | `data == '[DONE]'` | `¬completed` | raise "ended without a finish reason" (`:166-167`) | unchanged |
-| any | packet with `error`/`type == 'error'` | — | raise generic error (`:170-172`, deliberately no provider text) | unchanged |
-| any | any packet | `protocol == 'chat'` | see below (`:173-179`) | — |
-| any | any packet | `protocol == 'messages'` | `anthropic()` (`:180-181`) | — |
-| any | any packet | `protocol == 'responses'` | `responses()` (`:182-183`) | — |
-| any | any packet | otherwise | google branch (`:184-210`) | — |
+| any | `data == '[DONE]'` | `completed` | return `[]` | unchanged |
+| any | `data == '[DONE]'` | `¬completed` | raise "ended without a finish reason" | unchanged |
+| any | packet with `error`/`type == 'error'` | — | raise generic error (deliberately no provider text) | unchanged |
+| any | any packet | `protocol == 'chat'` | see below | — |
+| any | any packet | `protocol == 'messages'` | `anthropic()` (`src/blackrose/backend/opencode_protocols.py::StreamDecoder.anthropic`) | — |
+| any | any packet | `protocol == 'responses'` | `responses()` (`src/blackrose/backend/opencode_protocols.py::StreamDecoder.responses`) | — |
+| any | any packet | otherwise | google branch (inline in `feed`) | — |
 
 ### `chat` branch
 
 | from | event | guard | effect | to |
 | --- | --- | --- | --- | --- |
-| `OPEN`/`STOP_REASON` | packet with choices | — | yield every choice verbatim (`:174-175`, `:179`) | unchanged |
-| `OPEN` | any choice has `finish_reason` | — | `completed = True` (`:175-176`) | `COMPLETED` |
+| `OPEN`/`STOP_REASON` | packet with choices | — | yield every choice verbatim | unchanged |
+| `OPEN` | any choice has `finish_reason` | — | `completed = True` | `COMPLETED` |
 | `COMPLETED` | another choice with a finish reason | no guard | `completed` stays true, choice yielded | `COMPLETED` |
-| `COMPLETED` | content/reasoning/tool delta | no decoder guard | yielded; the turn rejects it (`turns.py:632-635`) | `COMPLETED` |
-| any | packet carries `usage` | — | append a `{'delta': {}, '_usage': …}` pseudo-choice after the real choices (`:177-178`) | unchanged |
-| `COMPLETED` | EOF | — | `opencode.py:142-143` sees `completed` and returns | terminal |
+| `COMPLETED` | content/reasoning/tool delta | no decoder guard | yielded; the turn rejects it (`src/blackrose/turns.py::TurnRunner._stream_round`) | `COMPLETED` |
+| any | packet carries `usage` | — | append a `{'delta': {}, '_usage': …}` pseudo-choice after the real choices | unchanged |
+| `COMPLETED` | EOF | — | `src/blackrose/backend/opencode.py::OpenCodeGoClient.stream` sees `completed` and returns | terminal |
 
 `finish` is never written on this branch: `end()` is unreachable for `chat`.
 
 ### `messages` branch (Anthropic)
 
+All in `src/blackrose/backend/opencode_protocols.py::StreamDecoder.anthropic` unless named.
+
 | from | event | guard | effect | to |
 | --- | --- | --- | --- | --- |
-| `OPEN` | `message_start` | — | `usage.prompt_tokens = input + cache_creation + cache_read` (`:217-221`) | `OPEN` |
-| `ABSENT` | `content_block_start` | `index ∉ blocks` | store block; `tool_use` → `arguments[index] = ''` and emit id/name/`''` fragment (`:222-230`); `text` → emit its initial text (`:231-232`) | `OPEN_*` |
-| `OPEN_*` | `content_block_start` | `index ∈ blocks` | **raise** "started a content block twice" (`:223-224`) | unchanged |
-| `ABSENT` (closed) | `content_block_start` | `index ∉ blocks` | accepted; a fresh, empty argument buffer (`:228`) | `OPEN_*` |
-| `OPEN_*` | `content_block_delta` | `finish is None ∧ index ∈ blocks` | append text/thinking/signature/partial JSON to the block and `arguments` (`:233-247`); emit the delta for text, thinking and arguments | `OPEN_*` |
-| `OPEN_*` | `content_block_delta` | `finish is not None` | **raise** "sent output after its stop reason" (`:215-216`) | unchanged |
-| `ABSENT` | `content_block_delta` | — | `KeyError` (`:235`) → mapped to "invalid stream response" by `opencode.py:146-147` | unchanged |
-| `OPEN_*` | `content_block_stop` | `index ∈ blocks` | parse `arguments[index]` into `block['input']`, append to `native`, retire both maps (`:248-254`) | `ABSENT` (closed) |
-| `ABSENT` | `content_block_stop` | `index ∉ blocks` | **raise** "stopped an unknown content block" (`:249-250`) | unchanged |
-| `OPEN` | `message_delta` with `stop_reason` | `finish is None` | `finish = normalized` (`:259-265`) | `STOP_REASON` |
-| `STOP_REASON` | `message_delta`, same normalized reason | equal | idempotent, no write (`:263-265`) | `STOP_REASON` |
-| `STOP_REASON` | `message_delta`, different reason | unequal | **raise** "conflicting stop reasons" (`:263-264`) | unchanged |
+| `OPEN` | `message_start` | — | `usage.prompt_tokens = input + cache_creation + cache_read` | `OPEN` |
+| `ABSENT` | `content_block_start` | `index ∉ blocks` | store block; `tool_use` → `arguments[index] = ''` and emit id/name/`''` fragment; `text` → emit its initial text | `OPEN_*` |
+| `OPEN_*` | `content_block_start` | `index ∈ blocks` | **raise** "started a content block twice" | unchanged |
+| `ABSENT` (closed) | `content_block_start` | `index ∉ blocks` | accepted; a fresh, empty argument buffer | `OPEN_*` |
+| `OPEN_*` | `content_block_delta` | `finish is None ∧ index ∈ blocks` | append text/thinking/signature/partial JSON to the block and `arguments`; emit the delta for text, thinking and arguments | `OPEN_*` |
+| `OPEN_*` | `content_block_delta` | `finish is not None` | **raise** "sent output after its stop reason" | unchanged |
+| `ABSENT` | `content_block_delta` | — | `KeyError` → mapped to "invalid stream response" by `src/blackrose/backend/opencode.py::OpenCodeGoClient.stream` | unchanged |
+| `OPEN_*` | `content_block_stop` | `index ∈ blocks` | parse `arguments[index]` into `block['input']`, append to `native`, retire both maps | `ABSENT` (closed) |
+| `ABSENT` | `content_block_stop` | `index ∉ blocks` | **raise** "stopped an unknown content block" | unchanged |
+| `OPEN` | `message_delta` with `stop_reason` | `finish is None` | `finish = normalized` | `STOP_REASON` |
+| `STOP_REASON` | `message_delta`, same normalized reason | equal | idempotent, no write | `STOP_REASON` |
+| `STOP_REASON` | `message_delta`, different reason | unequal | **raise** "conflicting stop reasons" | unchanged |
 | `STOP_REASON` | `content_block_stop` | `index ∈ blocks` | block still appended to `native`; no output emitted | `ABSENT` |
-| `STOP_REASON` | `message_stop` | — | `end()` → `completed = True`, terminal packet (`:266-267` → `:156-162`) | `COMPLETED` |
-| `OPEN` | `message_stop` | `finish is None` | **raise** "ended without a finish reason" (`:158-159`) | `OPEN` |
+| `STOP_REASON` | `message_stop` | — | `end()` → `completed = True`, terminal packet (`src/blackrose/backend/opencode_protocols.py::StreamDecoder.end`) | `COMPLETED` |
+| `OPEN` | `message_stop` | `finish is None` | **raise** "ended without a finish reason" (`end`) | `OPEN` |
 | `COMPLETED` | `message_stop` | — | **no guard**: `end()` runs again and returns a second terminal packet with the same reason | `COMPLETED` |
 
 ### `responses` branch (OpenAI)
 
+All in `src/blackrose/backend/opencode_protocols.py::StreamDecoder.responses` unless named.
+
 | from | event | guard | effect | to |
 | --- | --- | --- | --- | --- |
-| any | `response.output_text.delta` | — | emit content (`:272-273`) | unchanged |
-| any | `response.reasoning_summary_text.delta` | — | emit reasoning (`:274-275`) | unchanged |
-| any | `response.output_item.added`, item type `function_call` | — | `calls += 1`; emit id/name with `arguments=''` (`:276-280`) | unchanged |
-| any | `response.function_call_arguments.delta` | — | emit an arguments fragment for `output_index` (`:281-283`) | unchanged |
-| any | `response.output_item.done` | — | append the item to `native` (`:284-285`) | unchanged |
-| `OPEN`/`STOP_REASON` | `response.completed` / `response.incomplete`, body normal | no incomplete details, status `completed`, no `error` | `completed = True`; reason `tool_calls` if `calls` else `stop` (`:297`) | `COMPLETED` |
-| `OPEN`/`STOP_REASON` | same, body abnormal | `incomplete_details`, status ≠ `completed`, or `error` | reason from `incomplete_details.reason`, else `incomplete` (`:292-296`) | `COMPLETED` |
-| `COMPLETED` | another `response.completed` | **no guard** | second terminal packet with the same reason (`:297`) | `COMPLETED` |
-| `COMPLETED` | any content/argument delta or item | **no guard** | emitted and appended to `native` (`:272-285`); the turn rejects it (`turns.py:632-635`) | `COMPLETED` |
-| any | `response.failed` | — | raise "could not complete this response" (`:298-299`) | unchanged |
-| `OPEN` | EOF | — | `opencode.py:142-143` raises "ended before completion" | unchanged |
+| any | `response.output_text.delta` | — | emit content | unchanged |
+| any | `response.reasoning_summary_text.delta` | — | emit reasoning | unchanged |
+| any | `response.output_item.added`, item type `function_call` | — | `calls += 1`; emit id/name with `arguments=''` | unchanged |
+| any | `response.function_call_arguments.delta` | — | emit an arguments fragment for `output_index` | unchanged |
+| any | `response.output_item.done` | — | append the item to `native` | unchanged |
+| `OPEN`/`STOP_REASON` | `response.completed` / `response.incomplete`, body normal | no incomplete details, status `completed`, no `error` | `completed = True`; reason `tool_calls` if `calls` else `stop` | `COMPLETED` |
+| `OPEN`/`STOP_REASON` | same, body abnormal | `incomplete_details`, status ≠ `completed`, or `error` | reason from `incomplete_details.reason`, else `incomplete` | `COMPLETED` |
+| `COMPLETED` | another `response.completed` | **no guard** | second terminal packet with the same reason | `COMPLETED` |
+| `COMPLETED` | any content/argument delta or item | **no guard** | emitted and appended to `native`; the turn rejects it (`src/blackrose/turns.py::TurnRunner._stream_round`) | `COMPLETED` |
+| any | `response.failed` | — | raise "could not complete this response" | unchanged |
+| `OPEN` | EOF | — | `src/blackrose/backend/opencode.py::OpenCodeGoClient.stream` raises "ended before completion" | unchanged |
 
 Duplicate `output_item.added` for one `output_index` increments `calls` twice while
 `turns.collect_tool_call` merges by index, so `bool(calls)` and the emitted call set
-stay consistent; the count is only used as a boolean at `:297`.
+stay consistent; the count is only used as a boolean when the terminal reason is chosen.
 
 ### `google` branch
 
+All inline in `src/blackrose/backend/opencode_protocols.py::StreamDecoder.feed`.
+
 | from | event | guard | effect | to |
 | --- | --- | --- | --- | --- |
-| any | `usageMetadata` present | — | replace `usage` with prompt + (candidates + thoughts) (`:184-188`) | unchanged |
-| any | candidate part with `text` | — | `native.append(part)`; emit `content`, or `reasoning_content` when `thought` (`:190-193`) | unchanged |
-| any | candidate part with `functionCall` | — | `native.append(part)`; emit fragment `index = self.calls`, id from provider or `go_call_N`, arguments `json.dumps(args)`; `calls += 1` (`:194-198`) | unchanged |
-| `OPEN`/`STOP_REASON` | candidate with `finishReason` | — | normalize (`:201-206`), `end(normalized)` → `completed` (`:207`) | `COMPLETED` |
-| `COMPLETED` | later packet with parts | **no guard** | parts still appended to `native` and emitted (`:190-193`); the turn rejects it | `COMPLETED` |
+| any | `usageMetadata` present | — | replace `usage` with prompt + (candidates + thoughts) | unchanged |
+| any | candidate part with `text` | — | `native.append(part)`; emit `content`, or `reasoning_content` when `thought` | unchanged |
+| any | candidate part with `functionCall` | — | `native.append(part)`; emit fragment `index = self.calls`, id from provider or `go_call_N`, arguments `json.dumps(args)`; `calls += 1` | unchanged |
+| `OPEN`/`STOP_REASON` | candidate with `finishReason` | — | normalize, `end(normalized)` → `completed` | `COMPLETED` |
+| `COMPLETED` | later packet with parts | **no guard** | parts still appended to `native` and emitted; the turn rejects it | `COMPLETED` |
 | `COMPLETED` | later `finishReason` | **no guard** | a second terminal packet | `COMPLETED` |
-| any | `promptFeedback.blockReason` | — | raise "could not process" (`:208-209`) — evaluated **after** the parts of the same packet are emitted | unchanged |
+| any | `promptFeedback.blockReason` | — | raise "could not process" — evaluated **after** the parts of the same packet are emitted | unchanged |
 
 ### `RouterClient.stream`
 
+All in `src/blackrose/backend/router.py::RouterClient.stream`.
+
 | from | event | guard | effect | to |
 | --- | --- | --- | --- | --- |
-| any | SSE line not starting with `data:` | — | skip (`router.py:205-206`) | unchanged |
-| any | `data:` payload `[DONE]` | — | `break` out of the read loop (`:208-209`) | post-loop |
-| any | empty payload | — | skip (`:210-211`) | unchanged |
-| any | packet with `error` | — | raise the router's message (`:213-214`) | unchanged |
-| any | packet with `usage`/`timings` | — | yield a usage-only choice (`:215-217`) | unchanged |
-| any | choice | — | `saw_calls \|= bool(delta.tool_calls)` (`:219`) | unchanged |
-| any | choice with `finish_reason == 'stop'` | `saw_calls` | rewrite the copy to `tool_calls` (`:222-223`) | unchanged |
-| any | choice | — | yield (`:224`) | unchanged |
-| any | choice with `finish_reason` | — | `completed = True` and **keep reading** (`:225-226`) | `COMPLETED` |
-| `COMPLETED` | later content or tool delta | no guard | yielded; the turn rejects it (`turns.py:632-635`) | `COMPLETED` |
-| post-loop | — | `¬completed` | raise "ended before completion" (`:227-228`) | terminal |
+| any | SSE line not starting with `data:` | — | skip | unchanged |
+| any | `data:` payload `[DONE]` | — | `break` out of the read loop | post-loop |
+| any | empty payload | — | skip | unchanged |
+| any | packet with `error` | — | raise the router's message | unchanged |
+| any | packet with `usage`/`timings` | — | yield a usage-only choice | unchanged |
+| any | choice | — | `saw_calls \|= bool(delta.tool_calls)` | unchanged |
+| any | choice with `finish_reason == 'stop'` | `saw_calls` | rewrite the copy to `tool_calls` | unchanged |
+| any | choice | — | yield | unchanged |
+| any | choice with `finish_reason` | — | `completed = True` and **keep reading** | `COMPLETED` |
+| `COMPLETED` | later content or tool delta | no guard | yielded; the turn rejects it (`src/blackrose/turns.py::TurnRunner._stream_round`) | `COMPLETED` |
+| post-loop | — | `¬completed` | raise "ended before completion" | terminal |
 | post-loop | — | `completed` | generator returns | terminal |
 
 ## Invariants
 
 1. **A finish reason is only emitted when one was recorded.** `end()` refuses to
-   build a terminal packet without `reason or self.finish` (`opencode_protocols.py:156-159`);
-   `feed` only sets `completed` from a provider finish signal (`:176`, `:207`,
-   `:297`). Tests: `test_message_stop_without_a_stop_reason_is_rejected`,
+   build a terminal packet without `reason or self.finish` (`src/blackrose/backend/opencode_protocols.py::StreamDecoder.end`);
+   `feed` only sets `completed` from a provider finish signal (the chat
+   branch of `feed`, or through `end`). Tests: `test_message_stop_without_a_stop_reason_is_rejected`,
    `test_end_uses_an_explicit_reason_over_the_recorded_one`.
 2. **`[DONE]` before a finish reason is always rejected**, in both backends
-   (`opencode_protocols.py:165-167`; `router.py:208-209` + `:227-228`). After a
+   (`src/blackrose/backend/opencode_protocols.py::StreamDecoder.feed`; `src/blackrose/backend/router.py::RouterClient.stream`). After a
    finish reason it is accepted and yields nothing. Tests:
    `test_done_before_a_finish_reason_is_rejected`,
    `test_done_after_a_finish_reason_is_accepted`,
    `test_done_without_a_finish_reason_is_rejected`.
 3. **A stream that ends without a finish reason never reaches a consumer as a
    completed round.** EOF is checked at the backend boundary
-   (`opencode.py:139-143`, `router.py:227-228`), independently of consumer
-   discipline (`repairs.py:13-25` has no finish check of its own). Tests:
+   (`src/blackrose/backend/opencode.py::OpenCodeGoClient.stream`, `src/blackrose/backend/router.py::RouterClient.stream`), independently of consumer
+   discipline (`src/blackrose/repairs.py::repair_text` has no finish check of its own). Tests:
    `test_eof_without_done_or_finish_is_rejected`,
    `test_an_aborted_decode_never_reports_completed`.
 4. **`native` contains each completed block exactly once, and only closed
    blocks.** `messages` appends only on `content_block_stop` after removing the
-   record from `blocks` (`:249-254`); a second stop or a start while open is
-   refused (`:223-224`, `:249-250`). Tests:
+   record from `blocks` (`src/blackrose/backend/opencode_protocols.py::StreamDecoder.anthropic`); a second stop or a start while open is
+   refused. Tests:
    `test_duplicate_block_stop_is_rejected`,
    `test_duplicate_block_start_at_an_open_index_is_rejected`,
    `test_tool_use_arguments_accumulate_into_the_native_input`.
 5. **The recorded finish reason never changes.** A repeated identical reason is
-   idempotent; a different one raises (`:263-264`). Tests:
+   idempotent; a different one raises (`src/blackrose/backend/opencode_protocols.py::StreamDecoder.anthropic`). Tests:
    `test_conflicting_stop_reasons_are_rejected`,
    `test_repeated_stop_reason_and_message_stop_keep_the_first_reason`.
 6. **The `messages` branch emits no content after the stop reason**
-   (`:215-216`). The `chat`/`responses`/`google` branches do not enforce this
-   themselves; `turns.py:632-635` rejects such output for every protocol. Test:
+   (`src/blackrose/backend/opencode_protocols.py::StreamDecoder.anthropic`). The `chat`/`responses`/`google` branches do not enforce this
+   themselves; `src/blackrose/turns.py::TurnRunner._stream_round` rejects such output for every protocol. Test:
    `test_output_after_the_stop_reason_is_rejected`
-   (downstream: `tests/test_stream_outcomes.py::test_output_after_finish_and_conflicting_reasons_are_rejected`).
+   (downstream: `tests/test_stream_outcomes.py::StreamOutcomeTests.test_output_after_finish_and_conflicting_reasons_are_rejected`).
 7. **Framing preserves the terminator count.** One `\r`, `\n` or `\r\n` yields
    exactly one line, and the LF half of a CRLF split across chunks is never a
-   blank line (`stream_limits.py:106-109`, `:134-140`). Tests:
+   blank line (`src/blackrose/backend/stream_limits.py::sse_lines`). Tests:
    `test_crlf_split_across_chunks_yields_one_terminator`,
    `test_empty_chunk_between_cr_and_lf_preserves_the_frame`,
    `test_lone_cr_terminates_lines`, `test_crlf_blank_line_split_across_chunks`.
 8. **One BOM, first line, complete bytes.** A leading U+FEFF is removed from the
-   first yielded line only (`:127-129`, `:147-148`); a BOM in a later line is
+   first yielded line only (`sse_lines`); a BOM in a later line is
    preserved. Tests:
    `test_bom_split_across_chunks_is_stripped_from_the_first_line_only`.
-9. **An unterminated final line is delivered exactly once** (`:145-149`), which
-   is what lets `opencode.py:139-141` feed the last event of a stream that ends
+9. **An unterminated final line is delivered exactly once** (`sse_lines`), which
+   is what lets `src/blackrose/backend/opencode.py::OpenCodeGoClient.stream` feed the last event of a stream that ends
    without a blank line. Test: `test_unterminated_final_line_is_delivered_at_eof`.
 10. **Line buffering never exceeds `sse_line_bytes`.** The check happens before
-    the append (`:115-118`). Test:
+    the append (`sse_lines`). Test:
     `test_line_at_the_limit_is_accepted_and_one_byte_more_is_rejected`.
 11. **Every raw byte read is counted before framing**, including comments and
-    framing overhead (`:104` → `:42-48`). Test:
+    framing overhead (`sse_lines` → `src/blackrose/backend/stream_limits.py::StreamBudget.add_response_bytes`). Test:
     `test_response_budget_counts_framing_bytes_that_are_not_data_lines`.
 12. **Output bytes are charged when the fragment arrives, not when a call
-    completes** (`stream_limits.py:50-61`; callers `turns.py:148-153`). A call
+    completes** (`src/blackrose/backend/stream_limits.py::StreamBudget.add_output`; caller `src/blackrose/turns.py::collect_tool_call`). A call
     that never stops still consumes the reply budget. Test:
     `test_incomplete_tool_call_fragments_still_consume_the_reply_budget`.
 13. **A budget spans every provider request in a reply and is never reset**
-    (`stream_limits.py:27`; construction `turns.py:527`, per-request pass-through
-    `turns.py:626-628`, `opencode.py:126`, `router.py:175`). Tests:
+    (the `src/blackrose/backend/stream_limits.py::StreamBudget` docstring; construction `src/blackrose/turns.py::TurnRunner._start_reply`, per-request pass-through
+    `src/blackrose/turns.py::TurnRunner._stream_round`, `src/blackrose/backend/opencode.py::OpenCodeGoClient.stream`, `src/blackrose/backend/router.py::RouterClient.stream`). Tests:
     `test_one_budget_accumulates_across_two_provider_requests`,
     `test_reasoning_and_reply_budgets_are_independent_and_count_utf8_bytes`.
 14. **A fragment refused by the budget is not merged into the call.** The charge
-    happens first (`stream_limits.py:56`), the raise second (`:58-61`), and the
-    merge in `collect_tool_call` (`turns.py:151-154`) never runs. Test:
+    happens first, the raise second (both in `src/blackrose/backend/stream_limits.py::StreamBudget.add_output`), and the
+    merge in `src/blackrose/turns.py::collect_tool_call` never runs. Test:
     `test_incomplete_tool_call_fragments_still_consume_the_reply_budget`.
 15. **The normalisation `stop → tool_calls` belongs to the local router only**
-    (`router.py:222-223`). The `chat` decoder passes the provider reason through
+    (`src/blackrose/backend/router.py::RouterClient.stream`). The `chat` decoder passes the provider reason through
     untouched, so the OpenCode Go path cannot relabel a stop. Test:
     `test_decoder_does_not_normalise_stop_after_tool_deltas`,
     `test_stop_after_a_tool_delta_is_normalised_to_tool_calls`,
     `test_stop_without_a_tool_delta_stays_stop`.
 16. **A call set that disagrees with the finish reason is refused before any tool
-    runs** (`turns.py:179-181`, `:691-698`). This is the reconciliation point that
+    runs** (`src/blackrose/turns.py::require_normal_finish`, `src/blackrose/turns.py::TurnRunner._run_tools`). This is the reconciliation point that
     makes `calls` a decoder-side counter rather than a decoder-side obligation.
 
 ## Hazards and open questions
 
 ### H1 — duplicate `content_block_*` events silently corrupted the next request — `defect` (fixed)
 
-`opencode_protocols.py:222-254`, before this change. `blocks[index] = block`
+`src/blackrose/backend/opencode_protocols.py::StreamDecoder.anthropic`, before this change. `blocks[index] = block`
 overwrote an open block and `arguments[index] = ''` discarded its argument
 prefix; `content_block_stop` appended the block to `native` every time it was
 seen. Demonstrated, not theoretical:
 
 - duplicate `content_block_start` at index 0 (a retried event): the decoder
-  re-emitted the id/name fragment, so `turns.collect_tool_call`
-  (`turns.py:153`) concatenated the name — the round produced
+  re-emitted the id/name fragment, so `src/blackrose/turns.py::collect_tool_call`
+  concatenated the name — the round produced
   `name == 'write_filewrite_file'` and `arguments == '{"a":1}{"a":2}'`,
   with no exception raised anywhere.
 - duplicate `content_block_stop`: `native` held two identical `tool_use`
   blocks, and `prepare('messages', …)` replayed both in the next request
-  (`opencode_protocols.py:64-65`), i.e. a duplicate `tool_use` id on the wire.
+  (`src/blackrose/backend/opencode_protocols.py::_prepare`), i.e. a duplicate `tool_use` id on the wire.
 - reusing a stopped index for a text block: the retired `arguments[0]` was still
   in the map, so `content_block_stop` attached the old tool JSON as
   `block['input']` to the text block.
@@ -372,7 +390,7 @@ fail on the pre-change code, see Verification).
 
 ### H2 — `responses` never recovers arguments that arrive only in `output_item.done` — `fragile`, demonstrated
 
-`opencode_protocols.py:276-285`. The decoder emits a function call only from
+`src/blackrose/backend/opencode_protocols.py::StreamDecoder.responses`. The decoder emits a function call only from
 `response.output_item.added` (with `arguments=''`) and from
 `response.function_call_arguments.delta`. `response.output_item.done` is only
 appended to `native`. A provider or gateway that buffers arguments and sends them
@@ -382,22 +400,18 @@ execution rejects the call for invalid JSON *after* the round has been decoded
 and the reason `tool_calls` accepted. The round fails without any effect, so the
 failure is fail-closed, but the call never runs.
 
-Note: bead `bra-vom.4` describes this fallback as existing ("falls back to full
-arguments in `output_item.done` only if `not arguments.get(idx)`"), and names
-`call_indices`/`next_index`, which do not exist in this tree.
-`git log -S call_indices` and `git log -S next_index` find no revision of this
-file with those names, so the inventory is aspirational rather than stale.
-Test that records the gap:
+No revision of the decoder has had this fallback (`git log -S call_indices`
+and `git log -S next_index` find none). Test that records the gap:
 `test_function_call_arguments_completed_only_in_the_done_item_are_not_recovered`
 — invert it when the proposal below lands.
 
 ### H3 — `end()` hands out the live `native` list — `fragile`, demonstrated by probe
 
-`opencode_protocols.py:161-162` passes `self.native` by reference into
+`src/blackrose/backend/opencode_protocols.py::StreamDecoder.end` passes `self.native` by reference into
 `_provider_content`. On the `google` branch a part in a packet after
-`finishReason` is still appended (`:191`) and therefore appears inside the
-already-yielded terminal packet's content. `turns.py:632-635` rejects the round,
-so no committed history can contain it, but `repairs.py:13-25` consumes choices
+`finishReason` is still appended (`src/blackrose/backend/opencode_protocols.py::StreamDecoder.feed`) and therefore appears inside the
+already-yielded terminal packet's content. `src/blackrose/turns.py::TurnRunner._stream_round` rejects the round,
+so no committed history can contain it, but `src/blackrose/repairs.py::repair_text` consumes choices
 without a finish check and would keep appending the late text to a repair. Not
 pinned by a test (it would cement the aliasing as expected); reproduced with a
 five-line probe feeding
@@ -409,20 +423,20 @@ the observable path is already guarded.
 
 ### H4 — terminal-state enforcement is layered and asymmetric — `fragile`, documented
 
-`messages` refuses output after its stop reason (`:215-216`); `chat` (`:173-179`),
-`responses` (`:272-285`) and `google` (`:190-193`) do not, and none of the four
+`messages` refuses output after its stop reason (`src/blackrose/backend/opencode_protocols.py::StreamDecoder.anthropic`); `chat` and `google`
+(`src/blackrose/backend/opencode_protocols.py::StreamDecoder.feed`) and `responses` (`src/blackrose/backend/opencode_protocols.py::StreamDecoder.responses`) do not, and none of the four
 refuses a duplicate terminal event. The universal guard is
-`turns.py:632-635` plus the idempotent-from-the-turn's-perspective
-`turns.py:655-660`. A duplicate terminal packet is harmless there
+the post-latch check in `src/blackrose/turns.py::TurnRunner._stream_round` plus its idempotent-from-the-turn's-perspective
+finish-reason latch. A duplicate terminal packet is harmless there
 (`delta == {}`, same reason). A consumer that does not reuse `_stream_round`
 would lose that guard, but the backend boundary still enforces completion
 (invariant 3). Tests:
 `test_repeated_stop_reason_and_message_stop_keep_the_first_reason` and
-`tests/test_stream_outcomes.py::test_output_after_finish_and_conflicting_reasons_are_rejected`.
+`tests/test_stream_outcomes.py::StreamOutcomeTests.test_output_after_finish_and_conflicting_reasons_are_rejected`.
 
 ### H5 — the bead's state inventory does not match the tree — `documentation-gap`
 
-`bra-vom.4` places `StreamDecoder` at lines 318-621 (actual `:145-300`), claims
+`bra-vom.4` places `StreamDecoder` in the wrong part of the file, claims
 `blocks: dict[int, str]`, `arguments: dict[int, bool]`, `calls: set[int]`,
 `next_index` and `call_indices` (actual: `blocks: dict[int, dict]`,
 `arguments: dict[int, str]`, `calls: int`, neither of the other two), and claims
@@ -444,10 +458,12 @@ which is why the swallowed LF cannot lose buffered bytes.
 
 ### H7 — two defensive checks in `sse_lines` are unreachable — `none-found`
 
-- `:124-125` (`if line.endswith(b'\r')`) cannot fire: `pending` is only extended
-  with `chunk[start:end]` where `end` is the terminator index (`:113`, `:119`),
+Both in `src/blackrose/backend/stream_limits.py::sse_lines`:
+
+- `if line.endswith(b'\r')` cannot fire: `pending` is only extended
+  with `chunk[start:end]` where `end` is the terminator index,
   so a CR never survives into `pending`.
-- `:141-144` (post-loop `pending` size check) cannot fire: `:115-118` raises
+- The post-loop `pending` size check cannot fire: the in-loop size check raises
   before `pending` can exceed the limit, and the final segment is checked by the
   same expression.
 
@@ -456,31 +472,31 @@ defence if the scan loop is ever changed, so no change is proposed.
 
 ### H8 — `add_output` charges before it refuses — `none-found` (by design)
 
-`stream_limits.py:50-61` increments the counter and then compares, so a fragment
-that trips the limit has already been counted, while `collect_tool_call`
-(`turns.py:148-154`) does not merge it. The reply aborts either way, so this is
+`src/blackrose/backend/stream_limits.py::StreamBudget.add_output` increments the counter and then compares, so a fragment
+that trips the limit has already been counted, while `src/blackrose/turns.py::collect_tool_call`
+does not merge it. The reply aborts either way, so this is
 fail-closed; the asymmetry is recorded because it is surprising in isolation.
-`add_output` also does not call `check_time` (`:36-40`); a burst of already-read
-choices is bounded by the byte caps and by `bounded_choices`' per-choice deadline
-check (`:70`), not by `add_output`. Pinned by
+`add_output` also does not call `src/blackrose/backend/stream_limits.py::StreamBudget.check_time`; a burst of already-read
+choices is bounded by the byte caps and by `src/blackrose/backend/stream_limits.py::bounded_choices`' per-choice deadline
+check, not by `add_output`. Pinned by
 `test_incomplete_tool_call_fragments_still_consume_the_reply_budget`.
 
 ### H9 — `StreamBudget` requires a running loop and an absolute deadline — `fragile`
 
-`stream_limits.py:31` calls `asyncio.get_running_loop()` in `__init__`, so a
+`src/blackrose/backend/stream_limits.py::StreamBudget.__init__` calls `asyncio.get_running_loop()`, so a
 budget cannot be built or reset off-loop, and `deadline` cannot be extended. All
 current construction sites are inside async code
-(`turns.py:527` with `stream_bounds`, `opencode.py:126`, `router.py:175`), and
+(`src/blackrose/turns.py::TurnRunner._start_reply` with `stream_bounds`, `src/blackrose/backend/opencode.py::OpenCodeGoClient.stream`, `src/blackrose/backend/router.py::RouterClient.stream`), and
 the single deadline is the intended "whole reply" bound. Anything that retries a
 reply by reusing the budget keeps the original deadline; anything that retries by
 building a new budget resets it. Not demonstrated as a problem.
 
 ### H10 — a finished stream is drained to EOF rather than closed — `fragile`
 
-`router.py:225-226` sets `completed` and keeps reading; `opencode.py:132-149`
+`src/blackrose/backend/router.py::RouterClient.stream` sets `completed` and keeps reading; `src/blackrose/backend/opencode.py::OpenCodeGoClient.stream`
 likewise consumes lines until the body closes. A provider that keeps the
 connection open after its finish reason is bounded only by
-`budget.duration_seconds` (`stream_limits.py:96-103`). Closing the response on
+`budget.duration_seconds` (the `asyncio.timeout_at` in `src/blackrose/backend/stream_limits.py::sse_lines`). Closing the response on
 the first finish reason would save that wait but changes who owns the socket and
 would drop the usage packet that OpenAI-compatible servers send *after* the
 finish reason (`test_usage_packet_after_the_finish_reason_is_delivered_without_content`),
@@ -490,7 +506,7 @@ so no change is proposed.
 
 ### Applied: refuse block-lifecycle violations in the `messages` branch (H1)
 
-`src/blackrose/backend/opencode_protocols.py:222-254`:
+`src/blackrose/backend/opencode_protocols.py::StreamDecoder.anthropic`:
 
 ```python
         if kind == 'content_block_start':
@@ -518,17 +534,17 @@ Why this shape:
   start while the same index is still open, which no conforming provider emits.
   A provider that numbers blocks per message keeps working
   (`test_reusing_a_stopped_index_starts_with_a_clean_argument_buffer`).
-- The raises are `RuntimeError`, which `opencode.py:144-147` does not swallow
+- The raises are `RuntimeError`, which `src/blackrose/backend/opencode.py::OpenCodeGoClient.stream` does not swallow
   into "invalid stream response", so the failure names the protocol violation.
 
 No other source change is proposed. In particular the duplicated-terminal and
-output-after-finish behaviour (H4) is left to `turns.py:632-635`, because moving
+output-after-finish behaviour (H4) is left to `src/blackrose/turns.py::TurnRunner._stream_round`, because moving
 that guard into four decoders would duplicate a policy the turn already owns and
 would change the emitted-choice contract for consumers that only read text.
 
 ### Proposed, not applied: recover buffered `responses` arguments (H2)
 
-Smallest patch that restores the fallback the bead describes, in
+Smallest patch that adds the fallback, in
 `opencode_protocols.py` only:
 
 ```python
@@ -557,9 +573,8 @@ Smallest patch that restores the fallback the bead describes, in
 ```
 
 Not applied because: (a) it adds a state variable and changes the fragment stream
-of every `responses` call, which is a transport contract other beads in this epic
-may be documenting; (b) the existing tests construct `output_item.done` packets
-without `output_index` (`tests/test_opencode.py:344-347`), so the `call_id` map is
+of every `responses` call, which is a transport contract; (b) the existing tests construct `output_item.done` packets
+without `output_index` (`tests/test_opencode.py::ProviderTests.test_responses_stream_preserves_encrypted_reasoning_and_call_ids`), so the `call_id` map is
 required and its interaction with a missing `item['call_id']` needs its own
 denial test; (c) the current behaviour is fail-closed (the call is rejected for
 invalid arguments before any effect), so it is a functionality gap rather than a
@@ -575,92 +590,39 @@ being the inversion of
 
 ## Verification
 
-Run from the repository root.
+Run from the repository root:
 
 ```
-$ .venv/bin/python scripts/check_unit_tests.py -p test_sm_04_sse_stream_decoder.py -v
-Ran 43 tests in 0.020s
-
-OK
+.venv/bin/python scripts/check_unit_tests.py -p test_sm_04_sse_stream_decoder.py
+.venv/bin/python scripts/check_unit_tests.py -p test_telemetry.py
+.venv/bin/python scripts/check_unit_tests.py -p test_opencode.py
+.venv/bin/python scripts/check_unit_tests.py -p test_stream_outcomes.py
+.venv/bin/python scripts/check_unit_tests.py -p test_interactive_ui_evaluation.py
+.venv/bin/python scripts/check_unit_tests.py -p test_stream_limits.py
+.venv/bin/python -m ruff check src/blackrose/backend/opencode_protocols.py tests/test_sm_04_sse_stream_decoder.py
+.venv/bin/python -m mypy
 ```
 
-Pre-existing focused suites for the touched modules:
+The first command runs the tests that pin this machine's transitions and
+invariants; the rest are the pre-existing suites for the modules it touches.
+Two `test_stream_limits.py` tests,
+`tests/test_stream_limits.py::SseLimitTests.test_ui_repair_substream_uses_the_same_turn_byte_budget`
+and
+`tests/test_stream_limits.py::SseLimitTests.test_ui_repair_failure_logs_only_operation_and_class`,
+go through the UI repair path and need the generated `ui-runtime` contract from
+[checkout setup](../../CONTRIBUTING.md#set-up-a-checkout).
+
+Regression evidence for H1: with the guard in
+`src/blackrose/backend/opencode_protocols.py::StreamDecoder.anthropic` reverted,
+four tests fail:
 
 ```
-$ .venv/bin/python scripts/check_unit_tests.py -p test_telemetry.py
-Ran 5 tests in 0.004s
-OK
-
-$ .venv/bin/python scripts/check_unit_tests.py -p test_opencode.py
-Ran 25 tests in 0.153s
-OK
-
-$ .venv/bin/python scripts/check_unit_tests.py -p test_stream_outcomes.py
-Ran 12 tests in 1.148s
-OK
-
-$ .venv/bin/python scripts/check_unit_tests.py -p test_interactive_ui_evaluation.py
-Ran 5 tests in 0.002s
-OK
-
-$ .venv/bin/python scripts/check_unit_tests.py -p test_stream_limits.py
-Ran 13 tests in 1.270s
-
-FAILED (errors=2)
+test_duplicate_block_start_at_an_open_index_is_rejected
+test_duplicate_block_stop_is_rejected
+test_block_stop_for_an_unopened_index_is_rejected
+test_reusing_a_stopped_index_starts_with_a_clean_argument_buffer
 ```
 
-The two `test_stream_limits.py` errors are environmental and pre-existing in this
-worktree: `test_ui_repair_substream_uses_the_same_turn_byte_budget` and
-`test_ui_repair_failure_logs_only_operation_and_class` fail inside
-`blackrose/ui_documents.py:55` with
-`FileNotFoundError: src/blackrose/gui/static/ui-contract.json`, a gitignored
-generated artifact (`.gitignore:34`) that is absent here. The traceback never
-reaches `stream_limits` or `opencode_protocols`; the other 11 tests in that file
-pass. Generating the artifact (`npm test --prefix ui-runtime`, or the build step
-that writes it) would be needed to run those two.
-
-Regression evidence for H1 (the guard was reverted in a scratch copy, the file
-restored byte-identically afterwards; no git command was used):
-
-```
-test_duplicate_block_start_at_an_open_index_is_rejected -> FAILED (failures=1)
-test_duplicate_block_stop_is_rejected                  -> FAILED (failures=1)
-test_block_stop_for_an_unopened_index_is_rejected      -> FAILED (errors=1)
-test_reusing_a_stopped_index_starts_with_a_clean_argument_buffer -> FAILED (failures=1)
-```
-
-Static checks:
-
-```
-$ .venv/bin/python -m ruff check src/blackrose/backend/opencode_protocols.py tests/test_sm_04_sse_stream_decoder.py
-All checks passed!
-
-$ .venv/bin/python -m mypy
-Success: no issues found in 19 source files
-```
-
-Whole offline suite in this worktree:
-
-```
-$ .venv/bin/python scripts/check_unit_tests.py
-Ran 1261 tests in 41.331s
-
-FAILED (failures=4, errors=53, skipped=23)
-```
-
-All 57 of those are the same environmental gap, not this change:
-48 errors are `FileNotFoundError: src/blackrose/gui/static/ui-contract.json`,
-1 is `motion-canvas-runtime.js`, 3 are `ValueError: Motion Canvas needs setup:
-run blackrose setup-animations`, and the 3 saved-compatibility failures plus 1
-`test_ui_documents` `IndexError` are downstream of the missing UI contract
-(`'Interactive UI runtime unavailable; rebuild ui-runtime'`). The affected
-modules are `test_ui_documents`, `test_interactive_ui_fidelity`,
-`test_saved_compatibility`, `test_security_boundaries`, `test_motion_*`,
-`test_session_lifecycle`, `test_transcript_history` and the two `test_stream_limits`
-repair tests — none of the diff's call sites. Building `ui-runtime`
-(`npm test --prefix ui-runtime`) and running `blackrose setup-animations` would
-be required for a green full-suite run in a fresh worktree.
-
-Not run: the native `--gui` probes and any live provider probe. Neither is
-needed: the change is a pure guard inside one decoder and the protocol matrix is
-covered offline by `tests/test_stream_outcomes.py` and `tests/test_opencode.py`.
+Not needed: the native `--gui` probes and any live provider probe. The change is
+a pure guard inside one decoder and the protocol matrix is covered offline by
+`tests/test_stream_outcomes.py` and `tests/test_opencode.py`.
