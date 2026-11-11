@@ -14,7 +14,6 @@ from urllib.parse import urlsplit
 
 from .backend.effort import DEFAULT_BUDGETS, LEVELS
 from .web.sites import trusted_entry
-import tomlkit
 
 APP_NAME = 'blackrose-bloom'
 RIGOR_MODES = ('off', 'advisory', 'balanced', 'strict')
@@ -391,6 +390,7 @@ def save_trusted_hosts(config: Config, entries) -> None:
 
 
 def _save_toml_key(config: Config, key: str, value) -> None:
+    import tomlkit  # noqa: PLC0415 - only saving settings needs it; scripts/check_distribution.py runs CLI commands without it
     path = getattr(config, '_config_path', config_dir() / 'config.toml')
     document = tomlkit.parse(path.read_text()) if path.exists() else tomlkit.document()
     # tomlkit places a new top-level key before the first table.
