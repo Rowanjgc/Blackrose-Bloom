@@ -344,7 +344,7 @@ class UIActionStateTests(unittest.IsolatedAsyncioTestCase):
         await self.wait_for_status(c, 'live_action_012345678', 'started')
 
         # Only a second writer can reach this during a live turn (the product has
-        # one caller, chat.py:231, at boot).  It marks the live row interrupted.
+        # one caller, ChatController.recover_interrupted, at boot).  It marks the live row interrupted.
         await c._repo.reap_pending()
         self.assertEqual(await self.status(c, 'live_action_012345678'), 'interrupted')
         with self.assertRaisesRegex(ValueError, 'stale'):

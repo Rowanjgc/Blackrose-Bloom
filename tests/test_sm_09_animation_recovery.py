@@ -59,7 +59,7 @@ class RecoveryLedgerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((first['root_id'], first['attempt'], first['status'], first['claimed']),
                          (100, 1, 'repairing', True))
         # tool_execution._animation_create records this before the saved
-        # attachment is published to the page (tool_execution.py:374-378).
+        # attachment is published to the page.
         await self.recovery.finish(7, 100, 'replaced', 101)
         second = await self.reopen().claim(7, 101, 'replay failed')
         self.assertEqual((second['root_id'], second['attempt'], second['claimed']), (100, 2, True))
@@ -301,8 +301,8 @@ class PrepareSceneCueTests(unittest.TestCase):
             return motion.prepare_scene(scene)
 
     def test_two_cues_inside_the_endpoint_tolerance_keep_the_last_one(self):
-        # The probe accepts cue times up to one frame past the measured end
-        # (motion_canvas_probe.py:56); both of these clamp onto the last frame,
+        # The probe script in motion_canvas_probe accepts cue times up to one
+        # frame past the measured end; both of these clamp onto the last frame,
         # where the player only ever displays the last one.
         prepared = self.prepare(self.scene([
             {'time': 2, 'text': 'Early'},
