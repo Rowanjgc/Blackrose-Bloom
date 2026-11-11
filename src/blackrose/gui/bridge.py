@@ -19,7 +19,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import queue
+import stat
 import threading
 import weakref
 from collections.abc import Coroutine
@@ -179,6 +181,31 @@ def coalesce(batch: list[tuple[str, dict]]) -> list[tuple[str, dict]]:
     return out
 
 
+def save_export(chosen, text: str) -> None:
+    """Write a user export so its name only ever holds the complete file.
+
+    The text goes to a private temporary file beside the target and is flushed
+    to disk, then one rename publishes it. Nothing ever sees an empty or partial
+    export, and a failed save leaves an existing file untouched. An existing
+    file keeps its permissions, and a symlinked target is resolved first, so
+    the save updates the file the link points to, as an in-place write did.
+    """
+    target = Path(chosen if isinstance(chosen, str) else chosen[0]).resolve()
+    temporary = target.with_name(f'.{target.name}.{secrets.token_hex(8)}.partial')
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0)
+    descriptor = os.open(temporary, flags, 0o666)
+    try:
+        with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
+            if target.exists():
+                os.chmod(temporary, stat.S_IMODE(target.stat().st_mode))
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 class Api:
     """What the page may call, as ``window.pywebview.api.<name>(...)``.
 
@@ -296,8 +323,7 @@ class Api:
                 save_filename='interactive-answer.json', file_types=('JSON (*.json)',))
             if not chosen:
                 return {'cancelled': True}
-            target = Path(chosen if isinstance(chosen, str) else chosen[0])
-            target.write_text(source, encoding='utf-8')
+            save_export(chosen, source)
             return {'ok': True}
         except (OSError, ValueError, TypeError, KeyError, RecursionError) as error:
             return {'error': str(error)[:300]}
@@ -509,8 +535,7 @@ class Api:
                 save_filename='animation.html', file_types=('HTML (*.html)',))
             if not chosen:
                 return {'cancelled': True}
-            target = Path(chosen if isinstance(chosen, str) else chosen[0])
-            target.write_text(content, encoding='utf-8')
+            save_export(chosen, content)
             return {'ok': True}
         except (OSError, ValueError, RecursionError) as error:
             return {'error': str(error)[:300]}
