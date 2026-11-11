@@ -4,6 +4,9 @@ from __future__ import annotations
 import asyncio
 import threading
 from pathlib import Path
+from local_knowledge.config import Config
+from local_knowledge.embeddings import GemmaProvider
+from .library import import_capture
 
 
 class KnowledgeService:
@@ -17,13 +20,11 @@ class KnowledgeService:
     def _run(self, operation: str, arguments: dict):
         # All native work is serialized, including model initialization and writers.
         with self._worker_lock:
-            from local_knowledge.config import Config
-            from local_knowledge.retrieval import list_documents, open_document, search
+            from local_knowledge.retrieval import list_documents, open_document, search  # noqa: PLC0415 - Retriever store loads sqlite-vec and numpy on first use
             if self._config is None:
                 self._config = Config.load(self.config_path)
             config = self._config
             if operation in ('search', 'add', 'capture') and self._provider is None:
-                from local_knowledge.embeddings import GemmaProvider
                 self._provider = GemmaProvider(config)
             if operation == 'search':
                 return search(config, self._provider, **arguments)
@@ -32,10 +33,9 @@ class KnowledgeService:
             if operation == 'list':
                 return list_documents(config, **arguments)
             if operation == 'capture':
-                from .library import import_capture
                 return import_capture(config, self._provider, arguments['proposal'])
             if operation == 'add':
-                from local_knowledge.ingestion import import_file, selected_files
+                from local_knowledge.ingestion import import_file, selected_files  # noqa: PLC0415 - Retriever store loads sqlite-vec and numpy on first use
                 result = []
                 for path in selected_files(Path(arguments['path']).expanduser()):
                     try:
@@ -44,7 +44,7 @@ class KnowledgeService:
                         result.append({'path': str(path), 'status': 'failed', 'error': str(error)})
                 return {'results': result}
             if operation == 'remove':
-                from local_knowledge.ingestion import remove
+                from local_knowledge.ingestion import remove  # noqa: PLC0415 - Retriever store loads sqlite-vec and numpy on first use
                 remove(config, arguments['document_id'])
                 return {'status': 'removed'}
             raise ValueError('Unknown knowledge operation')

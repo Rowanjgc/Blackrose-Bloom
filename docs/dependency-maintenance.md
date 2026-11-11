@@ -63,6 +63,11 @@ in ignored `artifacts/` and must not include user data.
    fixes, not just the final green result. A local run does not verify GitHub
    branch protection, required checks or remote workflow success. Inspect those
    settings separately before relying on them.
+7. Review the import exceptions the health gate tolerates. List them with
+   `grep -rn "noqa: PLC0415" src` and the `PLC0415` entries in `pyproject.toml`'s
+   per-file ignores. Each reason should still hold; remeasure a cost-based one
+   with `python -X importtime` when its dependency changes, and move the import
+   to module level when it no longer earns the exception.
 
 ## 2026-10-17 review and trial update
 

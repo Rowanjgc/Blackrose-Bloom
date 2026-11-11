@@ -3,8 +3,10 @@ from pathlib import Path
 import json
 import re
 import sqlite3
+from urllib.parse import quote
+import struct
 import sqlite_vec
-from .embeddings import QUERY_PREFIX
+from .embeddings import QUERY_PREFIX, validate_vector
 
 SCHEMA_VERSION = 2
 
@@ -14,7 +16,6 @@ def connect(config, readonly=False):
     if not readonly:
         path.parent.mkdir(parents=True, exist_ok=True)
     # URI quoting is needed for paths containing '?' or '#'.
-    from urllib.parse import quote
     db = sqlite3.connect(f"file:{quote(str(path), safe='/')}?mode={'ro' if readonly else 'rwc'}", uri=True, timeout=30)
     try:
         db.row_factory = sqlite3.Row
@@ -166,8 +167,6 @@ def doctor(db, dimensions):
         keys = {r[0] for r in db.execute("SELECT key FROM metadata WHERE key IN ('index_identity','query_prefix')")}
         if keys != {"index_identity", "query_prefix"}:
             issues.append("Missing index identity")
-    from .embeddings import validate_vector
-    import struct
     for row in db.execute("SELECT vector FROM embeddings"):
         try:
             validate_vector(struct.unpack(f'{len(row[0]) // 4}f', row[0]), dimensions)

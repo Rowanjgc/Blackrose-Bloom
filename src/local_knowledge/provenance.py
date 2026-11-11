@@ -30,8 +30,8 @@ def read_metadata(db, document_id):
 
 def update_metadata(config, document_id, value):
     """Metadata-only update: no extraction, model load or chunk/embedding changes."""
-    from .database import connect
-    from .ingestion import writer_lock
+    from .database import connect  # noqa: PLC0415 - ingestion and database import provenance
+    from .ingestion import writer_lock  # noqa: PLC0415 - ingestion and database import provenance
     validate_metadata(value)
     with writer_lock(config):
         db = connect(config)

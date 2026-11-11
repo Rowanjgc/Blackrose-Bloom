@@ -21,7 +21,7 @@ def extract_local(path):
     if suffix not in SUPPORTED:
         raise ValueError(f"Unsupported file type: {suffix}")
     if suffix == ".pdf":
-        from pypdf import PdfReader
+        from pypdf import PdfReader  # noqa: PLC0415 - pypdf and Pillow load only to read a PDF
         reader = PdfReader(str(path), strict=True)
         if reader.is_encrypted:
             raise ValueError("Encrypted PDFs are not supported")
@@ -40,7 +40,7 @@ def extract_local(path):
         if "\x00" in text:
             raise ValueError("NUL bytes in text input")
         if suffix in (".html", ".htm"):
-            from bs4 import BeautifulSoup
+            from bs4 import BeautifulSoup  # noqa: PLC0415 - BeautifulSoup loads only for HTML sources
             soup = BeautifulSoup(text, "html.parser")
             for item in soup.select("script,style,nav,header,footer,aside,form"):
                 item.decompose()

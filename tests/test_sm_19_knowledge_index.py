@@ -172,7 +172,7 @@ class IndexConsistencyStateTests(unittest.TestCase):
     def test_rebuild_integrity_gate_keeps_the_original_database(self):
         self.add()
         self.assertEqual(self.counts(), [1, 1, 1, 1])
-        with patch("local_knowledge.database.doctor", return_value={"ok": False, "issues": ["synthetic"]}):
+        with patch("local_knowledge.ingestion.doctor", return_value={"ok": False, "issues": ["synthetic"]}):
             with self.assertRaisesRegex(ValueError, "integrity"):
                 rebuild(self.config, self.provider)
         self.assertEqual(self.counts(), [1, 1, 1, 1])

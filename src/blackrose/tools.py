@@ -1,10 +1,13 @@
 """Explicit evidence, skill, and image tools exposed to the selected model."""
 from __future__ import annotations
+from copy import deepcopy
 
 import jsonschema
 
 from .animations import ANIMATION_CREATE_PARAMETERS, SCENE_INPUT_SCHEMA
 from .motion_canvas import INPUT_SCHEMA as MOTION_INPUT_SCHEMA
+from .motion_plan import PLAN_SCHEMA
+from .illustrations import DRAFT_FIELDS, record
 
 # Largest serialized tool result admitted to a model round.
 MAX_TOOL_RESULT_CHARS = 68000
@@ -108,10 +111,8 @@ ANIMATION_TOOLS = [
 
 def animation_tools(attachment_ids=None, plan_first=False):
     """Only advertise revision/read arguments that can actually be used now."""
-    from copy import deepcopy
     definitions = deepcopy(ANIMATION_TOOLS)
     if plan_first:
-        from .motion_plan import PLAN_SCHEMA
         definitions[0]['function']['description'] += (
             ' For a new animation first call animation_plan, then animation_create_planned. '
             'Use this direct tool for revisions, unsupported motion, or if planning fails.')
@@ -164,7 +165,6 @@ IMAGE_TOOL = tool('image_gen',
 def image_tool(local=False, xiaohei=False, model=None):
     if not local and not xiaohei and model is None:
         return IMAGE_TOOL
-    from copy import deepcopy
     definition = deepcopy(IMAGE_TOOL)
     if model is not None and not local and not xiaohei:
         definition['function']['description'] += f' Selected model: {model}.'
@@ -197,7 +197,6 @@ def image_tool(local=False, xiaohei=False, model=None):
 
 
 def illustration_draft_tool():
-    from .illustrations import DRAFT_FIELDS, record
     return tool('illustration_draft',
         'Save and validate a Xiaohei draft without generating. First call: changes contains '
         'core_idea, facts, scene, action, labels. Objects/connections/layout/review_notes are optional. '

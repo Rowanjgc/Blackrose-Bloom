@@ -18,7 +18,7 @@ CPU_SECONDS = 20
 def main() -> int:
     resource.setrlimit(resource.RLIMIT_AS, (MEMORY_LIMIT, MEMORY_LIMIT))
     resource.setrlimit(resource.RLIMIT_CPU, (CPU_SECONDS, CPU_SECONDS))
-    from .documents import MAX_DOCUMENT_BYTES, InvalidDocument, parse_pdf
+    from .documents import MAX_DOCUMENT_BYTES, InvalidDocument, parse_pdf  # noqa: PLC0415 - set CPU and memory limits before the parser loads
     try:
         text, pages = parse_pdf(sys.stdin.buffer.read(MAX_DOCUMENT_BYTES + 1))
     except InvalidDocument as exc:

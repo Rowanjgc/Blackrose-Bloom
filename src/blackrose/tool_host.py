@@ -75,7 +75,7 @@ class ToolHost:
 
     async def review_animation(self, scene: Any, request: Any, plan: Any, builder: Any,
                                options: dict, budget: Any, progress: Callable) -> tuple[Any, dict]:
-        from .animation_visual_review import inspect_and_repair
+        from .animation_visual_review import inspect_and_repair  # noqa: PLC0415 - Pillow loads only for animation visual review
         return await inspect_and_repair(self._controller, scene, request, plan, builder,
                                         options, budget, progress)
 

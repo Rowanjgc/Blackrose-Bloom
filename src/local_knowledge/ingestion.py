@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, date, UTC
 from pathlib import Path
 import fcntl
@@ -8,8 +8,9 @@ import json
 import os
 import tempfile
 import uuid
+import stat
 import sqlite_vec
-from .database import connect, check_identity, vector_dimensions
+from .database import connect, check_identity, vector_dimensions, doctor
 from .extraction import extract, Section, SUPPORTED
 from .chunking import chunk_sections
 from .embeddings import validate_vector
@@ -86,7 +87,6 @@ def import_file(config, provider, path, tags=(), source_url=None, publication_da
             snapshot = Path(temporary) / ("source" + path.suffix.lower())
             fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
             with os.fdopen(fd, "rb") as source, snapshot.open("wb") as target:
-                import stat
                 original_stat = os.fstat(source.fileno())
                 if not stat.S_ISREG(original_stat.st_mode) or original_stat.st_size > config.max_file_bytes:
                     raise ValueError("Source exceeds size limit or is not a regular file")
@@ -178,8 +178,6 @@ def remove(config, document_id):
 
 def rebuild(config, provider):
     """Build from retained extraction snapshots; replace atomically under writer lock."""
-    from dataclasses import replace
-    from .database import doctor
     with writer_lock(config):
         original = connect(config)
         temporary = None

@@ -11,6 +11,7 @@ from ..clock_context import request_messages
 from .effort import local_fields, local_levels
 from .service import key_rejected, local_client
 from .stream_limits import StreamBounds, StreamBudget, sse_lines
+from ..titles import generate_title
 
 
 class RouterClient:
@@ -234,7 +235,6 @@ class RouterClient:
             raise RuntimeError('The model stream ended before completion')
 
     async def suggest_title(self, model, messages):
-        from ..titles import generate_title
         return await generate_title(self, model, messages)
 
     async def aclose(self):

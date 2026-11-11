@@ -23,6 +23,7 @@ import logging
 import re
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 
 log = logging.getLogger(__name__)
 
@@ -122,7 +123,6 @@ def trusted_entry(entry: str) -> str | None:
     entry = entry.strip()
     if '://' in entry:
         # A pasted address stands for its site, when it names one at the default port.
-        from urllib.parse import urlsplit
         try:
             parts = urlsplit(entry)
             if (parts.scheme.lower() not in ('http', 'https') or parts.port is not None

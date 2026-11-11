@@ -10,6 +10,7 @@ import secrets
 import tempfile
 
 from local_knowledge.extraction import MAX_TEXT, extract
+from local_knowledge.provenance import validate_metadata
 
 
 LIBRARY_INSTRUCTIONS = (
@@ -106,7 +107,6 @@ class LibraryProposals:
             ('capture_completeness', 'complete')))
 
     def propose(self, conversation: int, capture: Capture, title=None, tags=()) -> dict:
-        from local_knowledge.provenance import validate_metadata
         title = capture.title if title is None else title
         if not isinstance(title, str) or not title.strip() or len(title) > 500 or any(ord(c) < 32 for c in title):
             raise ValueError('Choose a title of 1..500 characters without control characters')
@@ -141,8 +141,8 @@ class LibraryProposals:
 
 def import_capture(config, provider, proposal: Proposal) -> dict:
     """Called under KnowledgeService's worker lock, after a desktop approval."""
-    from local_knowledge.database import connect
-    from local_knowledge.ingestion import import_file
+    from local_knowledge.database import connect  # noqa: PLC0415 - Retriever store loads sqlite-vec and numpy on first use
+    from local_knowledge.ingestion import import_file  # noqa: PLC0415 - Retriever store loads sqlite-vec and numpy on first use
     data = proposal.capture.text.encode('utf-8')
     key = digest((dict(proposal.capture.metadata)['document_type'] + '\0' +
                   proposal.capture.identity + '\0' + digest(data)).encode('utf-8'))

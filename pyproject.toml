@@ -96,9 +96,22 @@ dev = [
 # ASYNC110: poll external state where no in-process event can signal changes.
 # ASYNC220/221/240: scratch diagnostics and isolated tests perform synchronous
 # setup/assertions; they are not application hot paths. Production I/O is checked.
-select = ["F", "E9", "B", "UP", "PERF", "ASYNC"]
+# PLC0415: imports belong at module level (engineering standards §2.3). A
+# function-local import states why on its line: `# noqa: PLC0415 - <reason>`.
+select = ["F", "E9", "B", "UP", "PERF", "ASYNC", "PLC0415"]
 
 [tool.ruff.lint.per-file-ignores]
+# Entry points that defer each command's or service's imports until it runs, so
+# `blackrose --help`, the CLI subcommands and the MCP server start quickly.
+"src/blackrose/main.py" = ["PLC0415"]
+"src/blackrose/runtime.py" = ["PLC0415"]
+"src/blackrose/gui/app.py" = ["PLC0415"]
+"src/local_knowledge/cli.py" = ["PLC0415"]
+# The import rule covers application code. Tests and probes defer imports to
+# isolate fixtures and to reach GTK, a display or a live service only when used.
+"tests/**" = ["PLC0415"]
+"scripts/**" = ["PLC0415"]
+"experiments/**" = ["PLC0415"]
 "tests/test_web.py" = ["ASYNC109"]
 "tests/test_composer_drafts.py" = ["ASYNC110"]
 "tests/test_effort.py" = ["ASYNC110"]

@@ -13,6 +13,7 @@ import time
 from datetime import datetime, UTC
 
 import httpx
+from .turns import typed_by_user
 
 WORKSPACE = 'blackrose'
 # Default Honcho peer for the person using Blackrose; `memory_peer` in config overrides it.
@@ -508,7 +509,6 @@ class MemoryOutbox:
             jobs = await self._repo.memory_jobs()
 
     async def _send_turn(self, job, session):
-        from .turns import typed_by_user
         turn = await self._repo.memory_turn(job['message_id'])
         if turn is None:
             return

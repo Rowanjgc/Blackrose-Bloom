@@ -22,10 +22,15 @@ from .attachments import (
     MAX_TOTAL_DOCUMENT_CHARS, TooManyDocuments,
 )
 from .backend.effort import DEFAULT_ONLY, clamp
-from .config import IMAGE_PROVIDERS, save_preferences, save_citation_rigor, save_trusted_hosts
+from .config import (
+    IMAGE_PROVIDERS, save_preferences, save_citation_rigor, save_trusted_hosts, write_json,
+)
 from .storage.records import StoredAttachment
 from .storage.repository import NewAttachment
-from .tools import KNOWLEDGE_TOOLS, WEB_TOOLS, SKILL_TOOL, activation_tool, LIBRARY_ADD_TOOL, FILE_TOOLS, animation_tools, image_tool
+from .tools import (
+    KNOWLEDGE_TOOLS, WEB_TOOLS, SKILL_TOOL, activation_tool, LIBRARY_ADD_TOOL, FILE_TOOLS,
+    animation_tools, image_tool, SKILL_SCRIPT_TOOL, illustration_draft_tool,
+)
 from .animations import MIME_TYPE, encode_scene, load_scene
 from .errors import ChatBusy, InputRejected as InputRejected, VisionUnsupported as VisionUnsupported, RecoveryRequired
 from .prompts import wire_message
@@ -35,6 +40,23 @@ from .storage.repository import DEFAULT_TITLE, derive_title
 from .storage.db import run_to_completion
 from .artifacts import ArtifactLifecycle, settle
 from .titles import TITLE_TIMEOUT, title_messages
+from .edit_backups import EditBackups
+from .interactive_answers import InteractiveAnswers
+from .drafts import ComposerDrafts
+from .skill_execution import ScriptRunner, validate_artifact
+from .animation_recovery import AnimationRecovery
+from .diagram_repairs import DiagramRepairs
+from .memory import MemoryOutbox, MemoryUnavailable
+from .library import LibraryProposals
+from .workspace import (
+    WorkspaceFiles, authorize_directory, mentioned_directories, fuzzy_score, FileAccessError,
+)
+from .backend.providers import model_provider
+from .attachments import SUPPORTED_IMAGE_TYPES
+from . import ui_documents
+from .outbound import SITE_GRANT, TRUSTED_SITE, OutboundDenied, OutboundRequest
+from .documents import render_pdf
+from .edit_review import compare
 
 log = logging.getLogger(__name__)
 
@@ -91,22 +113,16 @@ class ChatController:
         self.backend = backend
         self._repo = repository
         self.config = config
-        from .edit_backups import EditBackups
         # Beside the attachment store by default: data_dir()/edit-backups.
         self.edit_backups = EditBackups(repository, edit_backups or attachment_store.root.parent / 'edit-backups')
-        from .interactive_answers import InteractiveAnswers
         self.interactive_answers = InteractiveAnswers(repository, config)
-        from .drafts import ComposerDrafts
         self.drafts = ComposerDrafts(repository)
         self.knowledge = knowledge
         self.skills = skills
-        from .skill_execution import ScriptRunner
         self.skill_scripts = ScriptRunner()
         self.web = web
         self._store = attachment_store
-        from .animation_recovery import AnimationRecovery
         self.animation_recovery = AnimationRecovery(attachment_store.root / 'animation-recovery.sqlite3')
-        from .diagram_repairs import DiagramRepairs
         self.diagram_repairs = DiagramRepairs(self)
         self.artifacts = ArtifactLifecycle(repository, attachment_store, self.animation_recovery)
         self.cleanup_result = {'completed': [], 'preserved': [], 'pending': []}
@@ -114,7 +130,6 @@ class ChatController:
         self.local_image_generator = local_image_generator
         # Optional HonchoMemory; used only while config.memory_enabled is on.
         self.memory = memory
-        from .memory import MemoryOutbox
         self._memory_outbox = MemoryOutbox(repository, memory, config) if memory is not None else None
         self._memory_task = None
         self._memory_pending = False
@@ -135,7 +150,6 @@ class ChatController:
         # The last send's committed complete turn, kept when Stop lands during its final save.
         self.last_completed_turn = None
         self.pending_edits = {}
-        from .library import LibraryProposals
         self.library_proposals = LibraryProposals()
         self._reference_index = None
         self.launch_workspace = None
@@ -179,7 +193,6 @@ class ChatController:
     @property
     def outputs_folder(self):
         """The only folder where model output may create files without the user's review."""
-        from .workspace import WorkspaceFiles
         return WorkspaceFiles().outputs
 
     def _set_toggle(self, key, enabled):
@@ -250,7 +263,6 @@ class ChatController:
 
     async def load_model(self, model):
         """Reuse load's readiness observation; legacy backends may return None."""
-        from .backend.providers import model_provider
         await self.make_room_for_chat(model)
         rows = await self.backend.load(model)
         self.catalog = rows if isinstance(rows, list) else await self.backend.models(model_provider(model))
@@ -285,7 +297,6 @@ class ChatController:
                                 await self.memory.aclose()
 
     async def refresh_models(self, provider=None):
-        from .backend.providers import model_provider
         selected_provider = provider or model_provider(self.model_name)
         rows = await self.backend.models(provider=selected_provider)
         self.catalog = [m for m in self.catalog if model_provider(m['id']) != selected_provider] + rows
@@ -451,7 +462,6 @@ class ChatController:
             self._memory_task = asyncio.create_task(self._sync_memory())
 
     async def _sync_memory(self):
-        from .memory import MemoryUnavailable
         while self._memory_pending:
             self._memory_pending = False
             try:
@@ -477,7 +487,6 @@ class ChatController:
 
     async def forget_memory(self):
         """Forget everything remembered about the user, whether memory is on or off."""
-        from .memory import MemoryUnavailable
         if self._memory_outbox is None:
             raise MemoryUnavailable('Memory is not available in this session')
         await self._memory_outbox.forget_everything()
@@ -577,7 +586,6 @@ class ChatController:
 
     def prepare_attachment_path(self, path):
         path = Path(path).expanduser()
-        from .attachments import SUPPORTED_IMAGE_TYPES
         if path.suffix.lower() in {s for suffixes in SUPPORTED_IMAGE_TYPES.values() for s in suffixes}:
             data, info = read_image_file(path)
             return PendingAttachment(self._attachment_name(path.name), data, image=info)
@@ -682,7 +690,6 @@ class ChatController:
     @property
     def animations_manual_only(self):
         """Local models skip standing animation tools and activation overhead."""
-        from .backend.providers import model_provider
         return model_provider(self.model_name) == 'local'
 
     @property
@@ -697,12 +704,10 @@ class ChatController:
             skills_available = any(s['enabled'] for s in self.skills.list())
         definitions = [SKILL_TOOL] if skills_available else []
         if skills_available and self.skills.has_execution_approval():
-            from .tools import SKILL_SCRIPT_TOOL
             definitions.append(SKILL_SCRIPT_TOOL)
         capabilities = []
         if self.config.interactive_ui_enabled and self.config.citation_rigor == 'off' and not ui_used:
-            from .ui_documents import available
-            if available():
+            if ui_documents.available():
                 capabilities.append('interactive_ui')
         if (self.animations_available and not self.animations_manual_only
                 and not animations_enabled and not animation_ids):
@@ -715,7 +720,6 @@ class ChatController:
         if selection.generator is not None:
             definitions += [image_tool(selection.kind == 'local', xiaohei, model=selection.model)]
             if xiaohei:
-                from .tools import illustration_draft_tool
                 definitions.append(illustration_draft_tool())
         if self.config.knowledge_enabled:
             definitions += KNOWLEDGE_TOOLS
@@ -743,7 +747,6 @@ class ChatController:
         raise ValueError('Unknown tool')
 
     async def run_skill_script(self, assistant, skill_id, entry_point, input):
-        from .skill_execution import validate_artifact
         if self.conversation is None or self.conversation.id != assistant.conversation_id:
             raise ValueError('Skill execution requires its originating conversation')
         files, entry = await asyncio.to_thread(self.skills.prepare_execution, skill_id, entry_point)
@@ -776,7 +779,6 @@ class ChatController:
 
     async def _outbound(self, name, arguments, origin):
         """The only path to WebAccess: authorize the exact request before sending it."""
-        from .outbound import SITE_GRANT, TRUSTED_SITE, OutboundDenied, OutboundRequest
         policy = self.outbound
         if policy is None:
             raise OutboundDenied('no_active_reply', 'Web requests run only during a reply. Nothing was sent.',
@@ -816,7 +818,6 @@ class ChatController:
             raise ChatBusy('Workspace selection expired; choose the directory again')
 
     async def set_workspace(self, path, *, selection=None):
-        from .workspace import authorize_directory
         if selection is None:
             selection = await self.begin_workspace_selection()
         async with self._workspace_lock:
@@ -844,7 +845,6 @@ class ChatController:
         self.launch_workspace = self.conversation.workspace
 
     async def directory_access_requests(self, text):
-        from .workspace import mentioned_directories
         await self.ensure_conversation()
         files = await self.workspace_files()
         requests = []
@@ -856,7 +856,6 @@ class ChatController:
         return requests
 
     async def approve_directories(self, conversation_id, grants):
-        from .workspace import authorize_directory
         if self.is_generating or not self.conversation or self.conversation.id != conversation_id:
             raise ChatBusy('Conversation changed while directory access was requested; send again')
         workspace = self.conversation.workspace
@@ -871,7 +870,6 @@ class ChatController:
         approved.update((g['path'], g) for g in grants)
 
     async def workspace_files(self):
-        from .workspace import WorkspaceFiles
         grants = self.directory_grants.get(self.conversation.id, {}) if self.conversation else {}
         files = WorkspaceFiles(self.conversation.workspace if self.conversation else None,
                                additional=grants.values(), backups=self.edit_backups.root,
@@ -925,7 +923,6 @@ class ChatController:
         return (await self.reference_suggestion_details(trigger, query))['items']
 
     async def reference_suggestion_details(self, trigger, query):
-        from .workspace import fuzzy_score
         if trigger == '$':
             items = await asyncio.to_thread(self.skills.list)
             items = [dict(s, kind='skill') for s in items if s['enabled']]
@@ -1026,7 +1023,6 @@ class ChatController:
         return {'items': matches, 'status': status, 'scan_truncated': truncated, 'message': message}
 
     async def file_tool(self, name, arguments, assistant):
-        from .documents import render_pdf
         if name not in ('directory_create', 'document_create'):
             # Local file names and contents are private; later model-written searches need approval.
             await self.expose_local_data()
@@ -1041,7 +1037,6 @@ class ChatController:
         if name == 'file_read':
             return await asyncio.to_thread(files.read, **args)
         if name == 'directory_create':
-            from .workspace import FileAccessError
             try:
                 return await asyncio.to_thread(files.mkdir, **args)
             except FileAccessError as error:
@@ -1078,7 +1073,6 @@ class ChatController:
             if suffix == '.json':
                 json.loads(content)
             data = content.encode('utf-8')
-        from .workspace import FileAccessError
         try:
             return await self._save_output(files, assistant, path, data)
         except FileAccessError as error:
@@ -1101,7 +1095,6 @@ class ChatController:
         # Once writing starts, settle both disk and attachment persistence before
         # propagating cancellation, preserving completed outputs in interrupted replies.
         async def save():
-            from .config import write_json
             # A pending record survives controller/process restart. Only metadata is
             # retried: never replay the external write or replace an edited output.
             identity = json.dumps([assistant.conversation_id, path,
@@ -1202,7 +1195,6 @@ class ChatController:
             return {'rejected': True}
         create = pending.get('operation') == 'create'
         if not approve:
-            from .edit_review import compare
             # A proposed PDF is reviewed as the Markdown it was rendered from.
             after = pending['text'] if create else pending['data'].decode()
             return {'path': pending['path'], 'before': pending['old'], 'after': after, 'approval_id': token,
@@ -1212,7 +1204,6 @@ class ChatController:
             raise ChatBusy('Wait for the reply to finish before approving')
         self.is_generating = True
         try:
-            from .workspace import FileAccessError
             files = await self.workspace_files()
             try:
                 if create:
@@ -1261,7 +1252,6 @@ class ChatController:
         current grants must authorize the file, and the file must still hold the
         approved replacement. The version it replaces becomes a backup in turn.
         """
-        from .workspace import FileAccessError
         record = await self.edit_backups.owned(self.conversation, backup_id)
         files = await self.workspace_files()
         data = await self.edit_backups.read(record, files)
@@ -1482,7 +1472,6 @@ class ChatController:
         return result, saved, generated
 
     async def _authorize_remote_image(self, arguments, references, selection):
-        from .outbound import OutboundDenied, OutboundRequest
         prompt, aspect_ratio = arguments['prompt'], arguments.get('aspect_ratio', '16:9')
         service = f'OpenRouter image generation (paid) · {selection.model}'
         if self.outbound is None:

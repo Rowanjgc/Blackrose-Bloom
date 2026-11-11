@@ -27,10 +27,10 @@ def clean(text) -> str | None:
 
 def announce(window, text: str, assertive: bool = False) -> bool:
     """Queue ``text`` for the GTK thread; return whether it was queued."""
-    from gi.repository import GLib
+    from gi.repository import GLib  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
 
     def emit():
-        from gi.repository import Atk
+        from gi.repository import Atk  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
         try:
             browser = window.gui.BrowserView.instances[window.uid]
             accessible = browser.window.get_accessible()

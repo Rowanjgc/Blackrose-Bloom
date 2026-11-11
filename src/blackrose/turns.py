@@ -47,6 +47,7 @@ from .tools import animation_tools
 from .telemetry import GenerationMetrics
 from .citations import AnswerAudit, CitationAudit, new_report, unchecked_report
 from .backend.stream_limits import StreamBounds, StreamBudget, StreamLimitExceeded, bounded_choices
+from .backend.providers import model_provider
 
 log = logging.getLogger(__name__)
 
@@ -318,7 +319,6 @@ class TurnRunner:
 
     async def _recall(self, text) -> list[dict]:
         """Remembered notes for a local model in a chat that is not excluded from memory."""
-        from .backend.providers import model_provider
         c = self.chat
         # Notes from other chats never go to a cloud provider.
         if model_provider(c.model_name) != 'local' or await self.repo.memory_excluded(c.conversation.id):

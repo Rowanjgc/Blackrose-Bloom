@@ -19,6 +19,7 @@ import tempfile
 import unicodedata
 
 from .outbound import visible
+from .artifacts import settle
 
 MAX_INPUT = 64_000
 MAX_OUTPUT = 64_000
@@ -206,7 +207,6 @@ class ScriptRunner:
                     path = stage / name
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(body)
-            from .artifacts import settle
             await settle(asyncio.to_thread(write_stage))
             launch = asyncio.create_task(asyncio.create_subprocess_exec(
                 *runtime_command(stage, entry), stdin=asyncio.subprocess.PIPE,

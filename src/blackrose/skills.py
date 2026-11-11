@@ -22,6 +22,7 @@ from pathlib import Path
 import yaml
 
 from .config import write_json
+from .skill_execution import execution_review, package_snapshot
 
 log = logging.getLogger(__name__)
 
@@ -559,7 +560,6 @@ class SkillManager:
 
     def execution_review(self, key: str) -> dict:
         """Separate, passive review of every byte that an execution can access."""
-        from .skill_execution import execution_review
         self.read(key)
         return {'id': key, **execution_review(self._path(key))}
 
@@ -590,7 +590,6 @@ class SkillManager:
         write_json(self.reviews_path, records)
 
     def prepare_execution(self, skill_id: str, entry_point: str) -> tuple[dict, str]:
-        from .skill_execution import package_snapshot
         self.read(skill_id)
         files, digest, manifest = package_snapshot(self._path(skill_id))
         record = self._require_valid_reviews().get(skill_id, {})

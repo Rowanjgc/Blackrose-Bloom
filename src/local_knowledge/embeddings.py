@@ -49,7 +49,7 @@ class GemmaProvider:
     def _snapshot(self):
         if not self.config.model_revision:
             raise ValueError("No pinned model revision. Run knowledge prefetch before indexing/search.")
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import snapshot_download  # noqa: PLC0415 - Hugging Face client and httpx load only to fetch a model
         try:
             return snapshot_download(self.config.model_id, revision=self.config.model_revision,
                                      cache_dir=self.config.cache_dir, local_files_only=True)
@@ -63,7 +63,7 @@ class GemmaProvider:
                 try:
                     # Import the defining module directly so lazy export lookup
                     # cannot obscure an underlying dependency traceback.
-                    from transformers.models.auto.tokenization_auto import AutoTokenizer
+                    from transformers.models.auto.tokenization_auto import AutoTokenizer  # noqa: PLC0415 - embedding stack loads only to embed
                     self._tokenizer = AutoTokenizer.from_pretrained(self._snapshot(), local_files_only=True, trust_remote_code=False)
                 except Exception as error:
                     self._initialization_failed("tokenizer", error)
@@ -102,8 +102,8 @@ class GemmaProvider:
 
     def _load_model(self):
         if self._model is None:
-            import torch
-            from sentence_transformers import SentenceTransformer
+            import torch  # noqa: PLC0415 - embedding stack loads only to embed
+            from sentence_transformers import SentenceTransformer  # noqa: PLC0415 - embedding stack loads only to embed
             torch.set_num_threads(self.config.threads)
             model = SentenceTransformer(
                 self._snapshot(), device="cpu", local_files_only=True, trust_remote_code=False,
@@ -139,7 +139,7 @@ class GemmaProvider:
     def identity(self):
         # Include tokenizer runtime and immutable snapshot identity. Query identity is
         # checked separately so query-only changes do not require document rebuilds.
-        from importlib.metadata import version
+        from importlib.metadata import version  # noqa: PLC0415 - package metadata read only for model provenance
         return {"model_id": self.config.model_id, "revision": self.config.model_revision,
                 "dimensions": self.config.dimensions, "precision": "float32", "normalize": True,
                 "document_format": DOCUMENT_FORMAT, "tokenizer_revision": self.config.model_revision,
@@ -151,7 +151,7 @@ class GemmaProvider:
 
 
 def prefetch(config):
-    from huggingface_hub import HfApi, snapshot_download
+    from huggingface_hub import HfApi, snapshot_download  # noqa: PLC0415 - Hugging Face client and httpx load only to fetch a model
     revision = config.model_revision or HfApi().model_info(config.model_id).sha
     snapshot_download(config.model_id, revision=revision, cache_dir=config.cache_dir,
                       ignore_patterns=["*.bin", "*.h5", "*.msgpack", "onnx/*", "openvino/*"])

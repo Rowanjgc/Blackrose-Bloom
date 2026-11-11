@@ -20,6 +20,7 @@ import time
 import jsonschema
 
 from .resources import animation_runtime_dir
+from .motion_plan import element_report
 
 STATIC = Path(__file__).parent / 'gui' / 'static'
 RUNTIME = animation_runtime_dir()
@@ -283,7 +284,6 @@ def prepare_scene(scene, *, metrics=None, motion=None, plan=None):
     if motion is not None:
         motion.update(motion_report(result, normalized['duration']))
         if plan is not None:
-            from .motion_plan import element_report
             elements = element_report(result, plan)
             motion['elements'] = elements
             if elements.get('issues'):
