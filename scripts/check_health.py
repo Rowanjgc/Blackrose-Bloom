@@ -93,6 +93,7 @@ def main():
     commands = [
         [sys.executable, 'scripts/check_unit_tests.py'],
         [sys.executable, 'scripts/check_recovery.py'],
+        [sys.executable, 'scripts/check_docs.py'],
         [sys.executable, '-m', 'ruff', 'check', 'src', 'tests', 'scripts'],
         [sys.executable, '-m', 'mypy'],
         ['node', '--check', 'src/blackrose/gui/static/bloom.js'],

@@ -64,8 +64,8 @@ git diff --check
 
 The health command's list in `scripts/check_health.py` is the source of what it
 runs: offline unittests, the synthetic
-[backup/restore drill](docs/recovery.md#repeatable-synthetic-drill), Ruff, targeted
-mypy, page JavaScript syntax checks, the interactive-answer runtime tests and
+[backup/restore drill](docs/recovery.md#repeatable-synthetic-drill), the
+[documentation reference check](scripts/check_docs.py), Ruff, targeted mypy, page JavaScript syntax checks, the interactive-answer runtime tests and
 Python lockfile validation. CI also installs and builds the locked Node
 dependencies. Keep tests focused on behavior and
 regressions. Follow existing file style; broad formatting changes belong in a
