@@ -14,7 +14,8 @@
 - `src/blackrose/chat.py`: `src/blackrose/chat.py::ChatController.expose_local_data`,
   `src/blackrose/chat.py::ChatController._outbound`, the knowledge/file entry points
   that expose local data (`src/blackrose/chat.py::ChatController._call_tool`,
-  `src/blackrose/chat.py::ChatController.file_tool`), the paid-image entry point
+  `src/blackrose/chat.py::ChatController.file_tool`,
+  `src/blackrose/chat.py::ChatController.run_skill_script`), the paid-image entry point
   (`src/blackrose/chat.py::ChatController._generate_image` →
   `src/blackrose/chat.py::ChatController._authorize_remote_image`).
 - Coupled, not owned here: `turns.py` installs one policy per reply
@@ -145,7 +146,8 @@ machine instance).
 2. `expose_local_data()`: a `knowledge_*` call
    (`src/blackrose/chat.py::ChatController._call_tool`) or a `file_*` call other
    than `directory_create`/`document_create`
-   (`src/blackrose/chat.py::ChatController.file_tool`) → durable write, then
+   (`src/blackrose/chat.py::ChatController.file_tool`) or a skill script run,
+   before the script starts (`src/blackrose/chat.py::ChatController.run_skill_script`) → durable write, then
    `mark_private` (`src/blackrose/chat.py::ChatController.expose_local_data`).
 3. `authorize(name, arguments)` for `fetch_content` or `web_search`
    (`src/blackrose/chat.py::ChatController._outbound`).

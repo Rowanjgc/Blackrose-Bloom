@@ -83,7 +83,7 @@ the row names another owner.
 | `_workspace_lock` | `ChatController.__init__` | `asyncio.Lock` | Serializes `set_workspace` bodies | `set_workspace` |
 | `is_generating` | `ChatController.__init__` | `bool` | Single-writer latch for replies, approvals and restores | `_review_edit`, `review_library_add`, `_restore_edit_backup` (set, then cleared in `finally`), `turns.py` |
 | `pending_edits` | `ChatController.__init__` | `dict[str, dict]`, ≤ 8 | File proposals bound to conversation, workspace, reply, path, bytes, digest | `file_tool` (edit and create proposals); removed by `_review_edit` (reject, `file_changed_published`, success) and `_delete_current_conversation`; filtered by `set_workspace` |
-| `directory_grants` | `ChatController.__init__` | `dict[int, dict]` | Extra in-memory read grants per conversation | `approve_directories`; popped by `set_workspace` |
+| `directory_grants` | `ChatController.__init__` | `dict[int, dict]` | Extra in-memory read grants per conversation | `approve_directories`; popped by `set_workspace` and, for the deleted conversation, by `ChatController._delete_current_conversation` |
 | `library_proposals` | `ChatController.__init__` | `LibraryProposals` | In-memory capture proposals | `__init__` only; mutated in place (`LibraryProposals.propose`, `review_library_add` reject and commit, `LibraryProposals.discard_conversation`, `shutdown`) |
 | `LibraryProposals.pending` | `src/blackrose/library.py::LibraryProposals.__init__` | `dict[str, Proposal]`, ≤ 8 | Token → frozen capture/title/tags | `propose` (new token, or the existing one on a dedup hit); read by `get`; pops above |
 | `Proposal` | `src/blackrose/library.py::Proposal` | frozen dataclass | The reviewed snapshot; `review()` renders a card | constructed in `propose` |

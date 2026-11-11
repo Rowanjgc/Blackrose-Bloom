@@ -305,17 +305,19 @@ the answer or abort first (see I5, H6).
 
 ## Hazards and open questions
 
-- **H1 — `fragile` (near-defect) — `src/blackrose/turns.py::TurnRunner._admit_round`.** The UI fallback
-  assumes `prompt.messages[-1]` is the `activate_tools` result. That is only
+- **H1 — `fragile` (near-defect) — `src/blackrose/turns.py::TurnRunner._admit_round`.**
+  Resolved: `src/blackrose/turns.py::TurnRunner._admit_round` now rewrites the most
+  recent `activate_tools` result instead of `messages[-1]`; pinned by
+  `tests/test_sm_03_round_admission.py::RoundAdmissionTests.test_the_fallback_corrects_the_activation_result_not_the_last_call`.
+  As found: the UI fallback
+  assumed `prompt.messages[-1]` was the `activate_tools` result. That is only
   true when the activation was the round's last call. A round may legally
   contain `[activate_tools(interactive_ui), <other tool>]` (multi-call rounds are
-  executed in order, `_run_tools`); the following UI round then rewrites
+  executed in order, `_run_tools`); the following UI round then rewrote
   the *other* call's accepted tool result with the UI-fit error, silently
-  dropping its evidence, while the activation result keeps its stale
-  "emit NDJSON" claim. Demonstrated by
-  `test_the_fallback_overwrites_the_last_tool_result_documented_follow_up`
-  (the `file_read` result is replaced and `Fixture evidence.` is absent from
-  the request). Fix in "Formalization decisions".
+  dropping its evidence, while the activation result kept its stale
+  "emit NDJSON" claim (the `file_read` result was replaced and
+  `Fixture evidence.` was absent from the request).
 - **H2 — `documentation-gap` — `src/blackrose/tool_execution.py::ToolExecutor._controller_tool` with
   `src/blackrose/turns.py::TurnRunner._answer`, `src/blackrose/turns.py::TurnRunner._admit_round`, `src/blackrose/turns.py::TurnRunner._require_final_answer`.** `read_skill` of the bundled animation skill
   enables the authoring contract in whatever round it is read. If that is the
@@ -421,14 +423,11 @@ the answer or abort first (see I5, H6).
 
 ## Formalization decisions
 
-**H1 fixed in `turns.py`; no `prompts.py` change.** H1 was applied: the UI-fit fallback now
-corrects the `activate_tools` result rather than `messages[-1]`, and the
-characterization test was inverted to
-`test_the_fallback_corrects_the_activation_result_not_the_last_call`. The patch
-is kept below for review.
+**H1 fixed in `turns.py`; no `prompts.py` change.** The UI-fit fallback
+corrects the `activate_tools` result rather than `messages[-1]`.
 
 1. **H1, `src/blackrose/turns.py::TurnRunner._admit_round` — correct the activation result, never another
-   call's result.** Replace the unconditional `messages[-1]` rewrite:
+   call's result.** The unconditional `messages[-1]` rewrite became:
 
    ```python
    except InputRejected:
@@ -454,11 +453,9 @@ is kept below for review.
 
    The reversed search finds the most recent activation result, which is always
    the one that armed the UI contract. When the activation was the last call the
-   bytes sent are unchanged. Invert
-   `test_the_fallback_overwrites_the_last_tool_result_documented_follow_up` to
-   assert that the `file_read` result survives and the activation result carries
-   the notice; `test_the_ui_fallback_restores_tools_and_keeps_the_ui_latch`
-   keeps passing.
+   bytes sent are unchanged. The H1 test asserts that the `file_read` result
+   survives and the activation result carries the notice;
+   `test_the_ui_fallback_restores_tools_and_keeps_the_ui_latch` still passes.
 
 2. **H4, `src/blackrose/prompts.py::Prompt.enable_ui`/`disable_ui` — remember the bytes that were added.** Add an
    `init=False, repr=False, compare=False` field `_ui_contract_text`, set it in
@@ -493,6 +490,6 @@ Offline, from the repository root:
 Unverified: H4 (needs `ui_documents.instructions` to change between arming and
 fallback; reasoned from `src/blackrose/prompts.py::Prompt.disable_ui` and the process-wide
 `lru_cache`s in `src/blackrose/ui_documents.py::_validated_contract` and
-`src/blackrose/ui_documents.py::_validated_bundle`). H1 is demonstrated only through the injected
-`InputRejected`; the fallback branch itself is the real code, and the clobber
+`src/blackrose/ui_documents.py::_validated_bundle`). H1's fix is pinned only through the injected
+`InputRejected`; the fallback branch itself is the real code, and the case
 only needs the real order of `messages` in a two-call round.

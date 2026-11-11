@@ -253,7 +253,7 @@ All guards are branches of `require_successful_artifacts`.
 | From | Event | Guard | Effect | To |
 | --- | --- | --- | --- | --- |
 | `AVAILABLE` | `on_start` called | `jobs < 4`, no error (`EffectBudget.start_image`) | `image_jobs += 1` | `AVAILABLE` or `EXHAUSTED` at 4 |
-| `AVAILABLE`/`EXHAUSTED`/`BLOCKED` | call reaches `execute` | `definitions()` hides `image_gen` when `not images_available` | `src/blackrose/tools.py::validate_call` fails "unavailable"; no job | unchanged |
+| `AVAILABLE`/`EXHAUSTED`/`BLOCKED` | call reaches `execute` | `definitions()` hides `image_gen` when `not images_available`, and also when `prompt.xiaohei and prompt.plan_only` | `src/blackrose/tools.py::validate_call` fails "unavailable"; no job | unchanged |
 | `AVAILABLE` | handler raised before `on_start` | `not inv.image_started` in `_fail_image_gen` | no `image_error`; notice "no image job has started" | unchanged |
 | `AVAILABLE` | handler raised after `on_start` | `inv.image_started` in `_fail_image_gen` | `image_error = result['error']`; notice blocks retry; may raise `RecoveryRequired` | `BLOCKED` |
 | `BLOCKED` | later `image_gen` dispatched | schema hidden, or `EffectBudget.start_image` refuses | no second job; error result only | `BLOCKED` |
@@ -346,7 +346,8 @@ All guards are branches of `require_successful_artifacts`.
    `test_started_image_failure_fails_the_turn_after_an_earlier_success`.
 8. **A spent or failed budget is enforced twice.** `definitions()` omits
    `image_gen` when `not images_available` and `EffectBudget.start_image`
-   refuses. The second guard is not reachable through `execute` because calls
+   refuses. (`definitions()` also omits it, independent of the budget, while
+   `prompt.xiaohei and prompt.plan_only`.) The second guard is not reachable through `execute` because calls
    are sequential and each recomputes `definitions()`; it is defensive. Pinned
    by `test_four_started_jobs_hide_the_tool_without_an_error_latch`.
 9. **Every draft mutation is revision-guarded.** `save` is the only mutator;

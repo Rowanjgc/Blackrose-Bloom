@@ -100,8 +100,8 @@ any other unready status reads as "Loading".
 | `Aborted` | `_boot_task is None and not _ready and _status_state != 'Backend unavailable'` — boot ended without either outcome (cancelled by `close`, or raised outside the caught region) |
 
 `Closing` (`_quit_requested`) is an orthogonal, absorbing gate rather than a state;
-`_ready` is never cleared, so `Closing ∧ Ready` is reachable and is the state in which
-`submit`/`retry` are still admitted (H4).
+`_ready` is never cleared, so `Closing ∧ Ready` is reachable; every admission path,
+`submit` and `retry` included, refuses in it (H4, resolved).
 
 ### B. Generation slot (`_generation`, `_active_reply`, `controller.is_generating`)
 
@@ -209,11 +209,11 @@ Owned by `src/blackrose/gui/session.py::Session.submit`,
 | --- | --- | --- | --- | --- |
 | `Idle` | E5 | slash command (`submit`'s first branch) | draft text cleared, `run_command`; **no slot** | `Idle` |
 | `Idle` | E5 | nothing to send (no text and no attachments) | `{'clear': False}` | `Idle` |
-| `Idle` | E5 | `not _ready or is_generating or _busy()` (`submit`'s busy guard) | bell | `Idle` |
+| `Idle` | E5 | `not _ready or _draft_owner is None or _quit_requested or is_generating or _busy()` (`submit`'s busy guard) | bell | `Idle` |
 | `Idle` | E5 | `_permission_pending` (`submit`'s silent permission check) | silent `{'clear': False}` | `Idle` |
 | `Idle` | E5 | approval branch (`_approve_directories is not None`) | `_permission_pending := True`; revalidate conversation+workspace after the dialog; refuse if busy returned (the busy check after `approve_directories`) | `Idle` (permission `Pending` in between) |
 | `Idle` | E5 | all pass | `_draft_sending := {…}`, composer cleared, `_generation := create_task(_send)`, immediate save (`_schedule_draft_save(0)`) | `Reserved` |
-| `Idle` | E6 | `not _ready or _busy() or is_generating or _permission_pending` (`retry`'s guard) | bell | `Idle` |
+| `Idle` | E6 | `not _ready or _busy() or _quit_requested or is_generating or _permission_pending` (`retry`'s guard) | bell | `Idle` |
 | `Idle` | E6 | — | `_generation := create_task(_retry_latest())` **before any read** | `Reserved` |
 | `Idle` | E7 | `_ui_action_pending or _busy() or is_generating or not _ready or _permission_pending or _quit_requested` (`ui_action`'s entry guard) | `{'ok': False, 'error': 'Wait for the current reply to finish'}` | `Idle` |
 | `Reserved` | `_send` enters | conversation selected (`_send`'s first check, else raises before the `try`) | `reply_start`, `_active_reply`, `_reply_epoch += 1`, `_request_state := 'pending'` (`_send`'s prologue) | `Streaming` |
@@ -464,8 +464,8 @@ Owned by `src/blackrose/gui/session.py::Session.submit` (directory approval bran
   clearing `_draft_owner` on entry to installing it at the end) during any
   conversation switch. Demonstrated by
   `test_a_submit_in_the_ownerless_redraw_window_is_refused`, which asserts the
-  submission is now refused inside the window. **Fixed**: `submit` and `retry` refuse
-  while `_draft_owner is None` or `_quit_requested` is set (see
+  submission is now refused inside the window. **Fixed**: `submit` refuses while
+  `_draft_owner is None` (see
   [Formalization decisions](#formalization-decisions)).
 - **H2 — `fragile` — `src/blackrose/gui/session.py::Session._wait_for_repair_slot`,
   `src/blackrose/gui/session.py::Session._repair_diagrams`,
@@ -492,7 +492,13 @@ Owned by `src/blackrose/gui/session.py::Session.submit` (directory approval bran
   no product path reaches it. A defensive `except` around the prologue, or moving the
   prologue inside the `try`, would make it unrepresentable.
 - **H4 — `fragile` — `src/blackrose/gui/session.py::Session.submit`,
-  `src/blackrose/gui/session.py::Session.retry`.** `submit` and `retry` do not check
+  `src/blackrose/gui/session.py::Session.retry`.** Resolved:
+  `src/blackrose/gui/session.py::Session.submit` and
+  `src/blackrose/gui/session.py::Session.retry` now include `_quit_requested` in
+  their admission guards. No test pins the refusal of these two paths yet; the
+  slot waiter's equivalent is pinned by
+  `tests/test_sm_20_gui_session.py::GenerationSlotPlannerTests.test_refusals_never_take_or_clobber_the_slot`.
+  As found: `submit` and `retry` did not check
   `_quit_requested`, although `ui_action`, both repair intakes and the slot waiter do
   (`src/blackrose/gui/session.py::Session.ui_action`,
   `src/blackrose/gui/session.py::Session.animation_failed`,
@@ -500,8 +506,8 @@ Owned by `src/blackrose/gui/session.py::Session.submit` (directory approval bran
   `src/blackrose/gui/session.py::Session._wait_for_repair_slot`). `close()` sets the
   flag first (`src/blackrose/gui/session.py::Session.close`) but keeps
   awaiting afterwards (generation cancellation, draft flush), and `_ready` is never
-  cleared, so a page call delivered in that window is admitted and its task is never
-  awaited; the loop then shuts the runtime down under it. The window needs a page call
+  cleared, so a page call delivered in that window was admitted and its task never
+  awaited; the loop then shut the runtime down under it. The window needs a page call
   during shutdown — the emitter is already closed (`src/blackrose/gui/bridge.py::Api._shutdown`
   closes it before `Session.close`) but a pywebview worker thread can still dispatch.
   Reasoned only, not demonstrated.
@@ -558,9 +564,7 @@ Owned by `src/blackrose/gui/session.py::Session.submit` (directory approval bran
 
 ## Formalization decisions
 
-**H1 (and optional H4) applied.** `gui/session.py` is a shared central file, so the
-investigation first specified the fix as a patch, which has since been applied:
-`submit` refuses while `_draft_owner is None` or `_quit_requested` is set, and
+**H1 and H4 fixed.** `submit` refuses while `_draft_owner is None` or `_quit_requested` is set, and
 `retry` also checks `_quit_requested` like every other admission path. `drafts.py`
 needs no change: its save is an upsert that cannot resurrect a deleted conversation
 (`src/blackrose/drafts.py::ComposerDrafts.save`), its reads revalidate everything
@@ -568,7 +572,7 @@ needs no change: its save is an upsert that cannot resurrect a deleted conversat
 `src/blackrose/gui/session.py::Session._valid_draft_attachments`), and its
 `[:16]` cap is exactly the current budget (H6).
 
-### Applied patch for H1
+### The H1 guard
 
 The composer cannot accept a submission while it has no owner. This makes
 "`_draft_sending` set" imply "the envelope can be persisted", which is the assumption
@@ -587,9 +591,9 @@ The composer cannot accept a submission while it has no owner. This makes
             return {'clear': True}
         if not stripped and not self._attachments:
             return {'clear': False}
-        # No owner means the composer is mid-replacement (`_load_draft`, delete):
-        # a write would be refused and an unstored request would have no recovery.
-        if (not self._ready or self._draft_owner is None
+        # No owner means the composer is mid-replacement (`_load_draft`, delete): a
+        # write would be refused and an unstored request would have no recovery.
+        if (not self._ready or self._draft_owner is None or self._quit_requested
                 or self.controller.is_generating or self._busy()):
             self.emit('bell')
             return {'clear': False}
@@ -603,18 +607,11 @@ keep admission open, the alternative is a `_draft_sending_saved` flag set by
 `_save_draft` and required by `_restore_unstored_draft`'s early return — more state for
 a narrower guarantee.
 
-Follow-ups this requires:
-
-- `test_a_send_settling_before_the_reloaded_owner_strands_the_request` must be
-  rewritten to assert the refusal (bell, composer unchanged, no task) once the guard
-  lands; `test_a_rejection_in_the_ownerless_redraw_window_is_restored` should then
-  assert that `submit` returns `{'clear': False}` inside the window instead of
-  `{'clear': True}`.
-- `tests/test_composer_drafts.py` and `tests/test_session_lifecycle.py` submit only
-  with an owner installed, so they are unaffected.
-- Optional companion (H4): add `self._quit_requested` to the same guard in
-  `src/blackrose/gui/session.py::Session.submit` and to the guard in
-  `src/blackrose/gui/session.py::Session.retry`, matching every other admission path.
+`tests/test_sm_20_gui_session.py::DraftRecoveryTests.test_a_submit_in_the_ownerless_redraw_window_is_refused`
+asserts the refusal inside the window. `tests/test_composer_drafts.py` and
+`tests/test_session_lifecycle.py` submit only with an owner installed, so the guard
+does not affect them. The `_quit_requested` term in the same guard, and in
+`src/blackrose/gui/session.py::Session.retry`, is the H4 fix.
 
 ## Verification
 

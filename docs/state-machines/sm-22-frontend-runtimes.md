@@ -25,8 +25,9 @@ into DOM state and bridge calls. The Python-side machines they talk to are
 loads (the module-level `MutationObserver` in `src/blackrose/gui/static/diagrams.js`)
 and `bloom.js` resolves `.dock` (the `dock` entry of
 `src/blackrose/gui/static/bloom.js::el`), so the order is a load-time dependency, not
-a preference. The three generated artifacts (`ui-runtime.js`, `ui-contract.json`,
-`mermaid-host.html`, `motion-canvas-runtime.js`) are gitignored build outputs
+a preference. The four generated artifacts (`ui-runtime.js`, `ui-contract.json`,
+`mermaid-host.html`, `motion-canvas-runtime.js`), with `mermaid-manifest.json` and
+the `*-NOTICES.txt` files beside them, are gitignored build outputs
 (the generated `src/blackrose/gui/static/` entries in `.gitignore`) produced from the
 sources above; a checkout must run `npm run build --prefix ui-runtime` and
 `--prefix diagram-runtime` and `--prefix animation-runtime` before the window can
