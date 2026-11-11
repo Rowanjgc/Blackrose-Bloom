@@ -41,7 +41,8 @@ archive verification.
 | `diagram-runtime/` | Full local Mermaid renderer, sandbox host build and dependency notices |
 | `skills/` | Bundled skill instructions and reference resources |
 | `tests/` | Deterministic regression tests and browser interpreter fixtures |
-| `scripts/` | Maintained development checks, installation, export, and audit tools |
+| `scripts/` | Development checks, probes, measurements and tools, each listed by cost in the [scripts index](scripts/README.md) |
+| `experiments/` | Evaluation harnesses beside the code they measure, listed in the [experiments index](experiments/README.md); closed experiments move to the private records |
 | `docs/` | Maintained guides and explicitly preserved review evidence |
 
 Read [architecture](docs/architecture.md) before changing module ownership.
@@ -120,9 +121,9 @@ Existing installations can still be supplied through `PLAYWRIGHT_MODULE` and
 `MODEL_PICKER_SCREENSHOTS` directories capture review images. Interactive-answer
 screenshots are written under `artifacts/browser/interactive-ui/`.
 
-Live model/image probes are separate from offline and scripted GUI checks. Read
-their module documentation and arguments before running them: they may contact
-configured services, use the GPU, or send paid provider requests.
+Live model, GPU and paid probes are separate from offline and scripted GUI checks;
+the [scripts index](scripts/README.md) groups every script by what running it
+costs. Read a probe's module documentation and arguments before running it.
 
 ## Dependencies and generated files
 

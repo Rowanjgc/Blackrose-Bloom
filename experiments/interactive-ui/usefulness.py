@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 import hashlib
 import json
 import os
@@ -94,7 +94,7 @@ async def run(args):
                 raise ValueError(f'Explicit model is absent from local catalog: {args.model}')
             artifact = contract()
             manifest = {
-                'date': datetime.now(timezone.utc).isoformat(), 'model': args.model, 'endpoint': config.endpoint,
+                'date': datetime.now(UTC).isoformat(), 'model': args.model, 'endpoint': config.endpoint,
                 'schema_hash': artifact['schema_hash'], 'artifact_hash': artifact['artifact_hash'],
                 'bundle_hash': artifact['bundle_hash'], 'repairs': args.repairs,
                 'timeout_seconds': args.timeout, 'repeats': args.runs,
@@ -115,7 +115,7 @@ async def run(args):
                            'mode': 'ui', 'first_accepted_block_seconds': None}
                     start = time.perf_counter()
 
-                    def on_ui(blocks):
+                    def on_ui(blocks, row=row, start=start):
                         if row['first_accepted_block_seconds'] is None and any(b.get('document') for b in blocks):
                             row['first_accepted_block_seconds'] = time.perf_counter() - start
 

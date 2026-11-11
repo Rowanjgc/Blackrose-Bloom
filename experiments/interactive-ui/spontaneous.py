@@ -102,7 +102,7 @@ async def run(args):
                         turn = await asyncio.wait_for(c.send(prompt), timeout=args.timeout)
                         record['blocks'] = [block_view(b) for b in turn.assistant_message.blocks]
                         record['content_length'] = len(turn.assistant_message.content or '')
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         record['error'] = 'TimeoutError: turn exceeded timeout'
                     except Exception as error:
                         record['error'] = f'{type(error).__name__}: {error}'
