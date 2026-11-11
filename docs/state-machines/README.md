@@ -9,7 +9,7 @@ transitions live in whoever happens to call the function next.
 
 This directory records one investigation per machine. Each document has the same
 shape: the state variables and their owners, a predicate for every state, the
-events, a transition table with file and line references, numbered invariants that
+events, a transition table that cites the code by symbol, numbered invariants that
 can be falsified, and the hazards the investigation demonstrated or merely
 reasoned about. Each has a companion suite under `tests/test_sm_*.py` that pins
 the cheap part of the machine: guards, terminal immutability, idempotent
@@ -105,3 +105,19 @@ as the change. If an investigation and the code disagree, the code is the bug or
 the document is stale; do not leave the disagreement in place. Bounded live or
 native probes belong in the document's verification section with their
 prerequisites, because the unit suite deliberately stays offline.
+
+Where a document's prose and its `tests/test_sm_*.py` suite disagree, the suite is
+authoritative: it is run on every change and the prose is not. Correct the
+document in the same change that exposes the disagreement.
+
+Cite code by symbol, never by line number, which moves with every edit above it.
+Use `path::Qualified.name` (for example
+`src/blackrose/turns.py::TurnRunner._prepare` or
+`tests/test_turns.py::TurnTests.test_stop_before_the_final_save_starts_settles_the_reply_as_cancelled`);
+`scripts/check_docs.py` checks that each dotted part is still defined. When the
+exact statement matters, cite its function and name the statement in words ("the
+`finally` that clears `is_generating`"). Link other documents by heading anchor.
+
+A verification section records how to reproduce the evidence: the commands, their
+prerequisites and what they establish. It does not record the state of the
+checkout or session that first ran them.

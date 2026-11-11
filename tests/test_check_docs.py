@@ -49,6 +49,11 @@ class DocumentationCheckTests(unittest.TestCase):
         self.assertEqual(check_docs.check(self.root, ['docs/page.md'], {},
                                           ignored=lambda _root, _path: True), [])
 
+    def test_every_dotted_part_of_a_reference_must_be_defined(self):
+        problems = self.problems('`test_thing.py::RenamedTests.test_survives_restart`\n')
+        self.assertEqual(len(problems), 1)
+        self.assertIn('names nothing defined', problems[0])
+
     def test_reference_to_an_undefined_test_is_reported(self):
         problems = self.problems('`tests/test_thing.py::test_was_renamed`\n')
         self.assertEqual(len(problems), 1)
