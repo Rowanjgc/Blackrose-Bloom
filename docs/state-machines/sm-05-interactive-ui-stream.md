@@ -85,10 +85,11 @@ the only thing that clears it (`src/blackrose/ui_documents.py::UIStream.begin`).
 | `INVALID` | `'invalid'` | Created by failed validation (`src/blackrose/ui_documents.py::UIStream._line`), by error settlement (`src/blackrose/turns.py::TurnRunner._save_interrupted`), or by the reaper (`src/blackrose/storage/repository.py::Repository.reap_pending`). Repairable exactly once |
 | `CANCELLED` | `'cancelled'` | Stop settlement (`src/blackrose/turns.py::TurnRunner._save_interrupted`) or crash reaping (`src/blackrose/storage/repository.py::Repository.reap_pending`); not repair-eligible |
 
-Two transient, non-persisted states matter for H1: a `STAGED` candidate dict
+Two transient, non-persisted states mattered for H1: a `STAGED` candidate dict
 (produced by `apply_repair`, not yet committed) and the divergence
 `MEMORY_STALE` (memory says `INVALID` revision *n* while the row is `READY`
-revision *n+1*).
+revision *n+1*). Since the H1 fix, memory takes the candidate before the commit
+is awaited, so `MEMORY_STALE` is no longer reachable from a Stop.
 
 ### Widget state
 
@@ -223,8 +224,8 @@ is confined to `markdown`; no path rewrites an `interactive_ui` block except
    `test_save_blocks_is_atomic_and_checks_ownership`.
 10. **Repair is one-shot and forward-only.** Only `invalid → ready` is accepted,
     with exactly `revision+1` and unchanged identity (`src/blackrose/storage/repository.py::Repository.repair_block`), so
-    a second repair of the same block is refused at storage even though
-    `apply_repair` would stage it. Pinned by
+    a second repair of the same block is refused at storage, and
+    `apply_repair` refuses to stage it as well. Pinned by
     `test_repair_is_one_shot_from_invalid_only`,
     `test_repair_guards_revision_identity_and_cancelled_blocks`.
 11. **A `cancelled` block is never repaired.** Same guard; repair only
@@ -258,7 +259,12 @@ is confined to `markdown`; no path rewrites an `interactive_ui` block except
 
 ## Hazards and open questions
 
-- **H1 — `defect` — `src/blackrose/turns.py::TurnRunner._repair_ui` (with `src/blackrose/storage/db.py::run_to_completion`).** Stop can
+- **H1 — `defect` — `src/blackrose/turns.py::TurnRunner._repair_ui` (with `src/blackrose/storage/db.py::run_to_completion`).**
+  Resolved: `src/blackrose/turns.py::TurnRunner._repair_ui` now copies the staged
+  candidate into the stream block before awaiting `repair_block` and restores the
+  prior block only when storage refuses it; pinned by
+  `tests/test_sm_05_interactive_ui_stream.py::RepairInterruptionTests.test_stop_after_the_repair_commit_still_settles_the_reply`.
+  As found: Stop can
   land inside `await self.repo.repair_block(...)`. `run_to_completion` keeps
   waiting for the worker thread after cancellation and only then re-raises
   `CancelledError` (`src/blackrose/storage/db.py::run_to_completion`), so the repair **is committed** while the
@@ -272,24 +278,24 @@ is confined to `markdown`; no path rewrites an `interactive_ui` block except
   reports the reply as an *error* whose text is the internal message
   `UI block identity is immutable` (the `except Exception` branch of `src/blackrose/gui/session.py::Session._send`), and the next
   start reaps the pending row as a crash (reaper error text,
-  `src/blackrose/storage/repository.py::Repository.reap_pending`). Demonstrated by
-  `test_stop_after_the_repair_commit_breaks_settlement_documented_follow_up`,
-  which drives the real `_repair_ui` and `_save_interrupted`: the committed row
-  is `ready` revision 2, the stream block is still `invalid` revision 1,
-  `_save_interrupted` raises, and the reply row is still `PENDING`. Window is one
-  local write wide, but deterministic when reached. Fix in "Formalization
-  decisions".
-- **H2 — `fragile` — `src/blackrose/ui_documents.py::apply_repair`.** `apply_repair` stages a repair
-  onto any dict: it does not check `status`, so it happily produces
-  `ready`/`revision+1` from a `ready`, `cancelled` or already-repaired block, and
-  also accepts a lower `source_sequence` than storage holds. The authoritative
-  guards live one layer away (`src/blackrose/storage/repository.py::Repository.repair_block`) and `save_blocks`'s
-  monotonicity check (`src/blackrose/storage/repository.py::Repository.save_blocks`) has no counterpart in `repair_block`. Today the
-  only caller filters on `status == 'invalid'` (`src/blackrose/turns.py::TurnRunner._repair_ui`), so this is a
-  caller-only invariant; the split is visible in
-  `test_repair_is_one_shot_from_invalid_only` (staging a second repair succeeds,
-  storage refuses it). Confirming a real impact needs a second caller; the
-  cheapest hardening is the one-line status guard in "Formalization decisions".
+  `src/blackrose/storage/repository.py::Repository.reap_pending`). The original
+  characterization drove the real `_repair_ui` and `_save_interrupted`: the
+  committed row was `ready` revision 2, the stream block still `invalid`
+  revision 1, `_save_interrupted` raised, and the reply row stayed `PENDING`.
+  The window was one local write wide, but deterministic when reached.
+- **H2 — `fragile` — `src/blackrose/ui_documents.py::apply_repair`.** Resolved
+  for status: `src/blackrose/ui_documents.py::apply_repair` now raises unless the
+  block is `invalid`; pinned by
+  `tests/test_sm_05_interactive_ui_stream.py::BlockLifecycleTests.test_repair_is_one_shot_from_invalid_only`
+  (both staging and storage refuse a second repair). As found: `apply_repair`
+  staged a repair onto any dict without checking `status`, so it produced
+  `ready`/`revision+1` from a `ready`, `cancelled` or already-repaired block.
+  Still open: it accepts a lower `source_sequence` than storage holds, and
+  `save_blocks`'s monotonicity check
+  (`src/blackrose/storage/repository.py::Repository.save_blocks`) has no
+  counterpart in `src/blackrose/storage/repository.py::Repository.repair_block`.
+  The only caller takes the sequence from the block it read, so this needs a
+  second caller to matter.
 - **H3 — `fragile` — `src/blackrose/storage/repository.py::Repository.ui_block`/`src/blackrose/storage/repository.py::_attach_batch` vs `src/blackrose/storage/repository.py::Repository.save_blocks`.** The
   repository injects `saved_state`/`state_sequence` when it reads a block, then
   treats the whole payload as the immutable unit when it writes one. A block
@@ -316,7 +322,7 @@ is confined to `markdown`; no path rewrites an `interactive_ui` block except
   (`ui-runtime/host.jsx::flush`) and retries the *same* `sequence + 1` after any failure
   (the `catch` in `flush` sets `dirty` again), and `update()` never refreshes `record.sequence` from an incoming
   payload (`ui-runtime/host.jsx::update`). A committed-but-unacknowledged save (cancellation after
-  commit is possible for the same `run_to_completion` reason as H1) therefore wedges that
+  commit is possible for the same `run_to_completion` reason as H1's original window) therefore wedges that
   widget's saves until the page re-mounts. Not executed: the window needs a
   bridge reply lost after the row was written. Confirm with a probe that
   cancels `Session.ui_state` after `save_ui_state` returns and then retries.
@@ -363,8 +369,8 @@ is confined to `markdown`; no path rewrites an `interactive_ui` block except
   is dropped instead of raising; on the ready path it raises and fails the round.
 - **Can an `invalid` block be repaired twice, or repaired after cancellation?**
   Not through storage: `invalid → ready` exactly once, revision `+1`
-  (`src/blackrose/storage/repository.py::Repository.repair_block`). `apply_repair` itself would stage a second repair
-  (H2), and nothing in the repository refuses a repair purely because the reply
+  (`src/blackrose/storage/repository.py::Repository.repair_block`), and `apply_repair` refuses to stage one
+  from any status but `invalid` (H2). Nothing in the repository refuses a repair purely because the reply
   was cancelled — the guard is that `_repair_ui` never runs after Stop
   (`src/blackrose/turns.py::TurnRunner._close_ui_segment`) and that `cancelled` is not `invalid`.
 - **Does `save_blocks` make finalised blocks immutable, including
@@ -389,12 +395,9 @@ is confined to `markdown`; no path rewrites an `interactive_ui` block except
 
 ## Formalization decisions
 
-**H1 and H2 fixed; H3/H4/H5 need their owners.** H1 (in `turns.py`) and H2 (in
-`ui_documents.py`) were applied by the orchestrator once the concurrent beads
-had landed; the H1 characterization test was inverted to
-`test_stop_after_the_repair_commit_still_settles_the_reply` and H2 now has its
-own refusal test. H3/H5 remain one layer away from the file this bead owns.
-Patches are kept below for review.
+**H1 and H2 fixed; H3/H4/H5 need their owners.** H1 is fixed in `turns.py`
+and H2's status guard in `ui_documents.py`. H3 and H5 belong to the storage
+layer and the renderer.
 
 1. **H1, `src/blackrose/turns.py::TurnRunner._repair_ui` — make memory follow the attempted commit.**
 
@@ -419,21 +422,19 @@ Patches are kept below for review.
 
    With this, a `CancelledError` raised after the commit leaves memory and row
    agreeing (`ready`, revision 2), so the interrupted settlement's `save_blocks`
-   is a no-op instead of a refusal and `finish_message(CANCELLED)` runs. Invert
-   `test_stop_after_the_repair_commit_breaks_settlement_documented_follow_up`
-   (it must then assert `save_blocks` succeeds and the row settles
-   `CANCELLED`); `test_stop_during_the_repair_request_commits_nothing_and_settles`
-   keeps today's outcome (`invalid` + `cancelled`, row `CANCELLED`). Alternative,
-   if `turns.py` is not available: have `_save_interrupted` reconcile the
-   conflicting block by re-reading the row — wider and slower, not recommended.
+   is a no-op instead of a refusal and `finish_message(CANCELLED)` runs; the H1
+   test asserts exactly that.
+   `test_stop_during_the_repair_request_commits_nothing_and_settles` keeps the
+   earlier outcome (`invalid` + `cancelled`, row `CANCELLED`). The rejected
+   alternative was to have `_save_interrupted` reconcile the conflicting block by
+   re-reading the row — wider and slower.
 
-2. **H2, `src/blackrose/ui_documents.py::apply_repair` — one-line defence in depth.** Add
+2. **H2, `src/blackrose/ui_documents.py::apply_repair` — one-line defence in depth.**
    `if block.get('status') != 'invalid': raise ValueError('Only an invalid UI block can be repaired')`
-   before `validate_document`. It makes the staging layer agree with
+   now runs before `validate_document`. It makes the staging layer agree with
    `src/blackrose/storage/repository.py::Repository.repair_block`, costs nothing, and removes the confusing
-   "identity is immutable" error at settlement time. Not applied here because
-   no current caller can reach the unguarded path, and this bead's rule is to
-   change source only for a demonstrated hazard.
+   "identity is immutable" error at settlement time. The `source_sequence` half
+   of H2 is not addressed.
 
 3. **H3, `src/blackrose/storage/repository.py::Repository.save_blocks` — compare the immutable payload without the read
    projection.** Pop `saved_state`/`state_sequence` from `prior` (or compare
@@ -474,7 +475,7 @@ invariants and hazards; the interactive-answer policy tests live in
 Unverified: H5's lost-reply window (needs a bridge reply cancelled after the row
 is written; reasoned from `src/blackrose/storage/db.py::run_to_completion` and
 `ui-runtime/host.jsx::flush`/`ui-runtime/host.jsx::update`). H1's cancellation
-of the repair commit is reproduced with a wrapper that awaits the real
+of the repair commit is driven with a wrapper that awaits the real
 `repair_block` and then raises `CancelledError`, which is exactly `run_to_completion`'s
 post-cancellation contract; the settlement half runs the real
 `_save_interrupted`, and the row outcome was asserted directly. A GUI Stop was

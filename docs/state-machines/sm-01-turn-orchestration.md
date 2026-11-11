@@ -42,7 +42,7 @@ longest holder, not the only one.
 | Variable | Location | Type | Meaning | Who writes |
 | --- | --- | --- | --- | --- |
 | `ChatController.is_generating` | `src/blackrose/chat.py::ChatController.__init__` | `bool` | Global generation reservation. `True` from turn admission until the turn's `finally`. | `src/blackrose/turns.py::TurnRunner._run` (set at admission, cleared in its `finally`); also `select_model`, `_review_edit`, `_restore_edit_backup`, `review_library_add` and `DiagramRepairs.repair`, each setting and clearing it |
-| `ChatController.last_request_stored` | `src/blackrose/chat.py::ChatController.__init__` | `bool` | Whether *the last admitted send* committed its request row, so its text is not a lost draft. Never cleared when a turn ends; it describes the previous turn until the next `_run`. | `src/blackrose/turns.py::TurnRunner._run` (reset), `src/blackrose/turns.py::TurnRunner._begin_turn` (set, on both its cancelled and normal paths) — no other writer |
+| `ChatController.last_request_stored` | `src/blackrose/chat.py::ChatController.__init__` | `bool` | Whether *the last admitted send* committed its request row, so its text is not a lost draft. Never cleared when a turn ends; it describes the previous turn until the next accepted send. | `src/blackrose/turns.py::TurnRunner.run` (reset before its first await), `src/blackrose/turns.py::TurnRunner._run` (reset again at admission), `src/blackrose/turns.py::TurnRunner._begin_turn` (set, on both its cancelled and normal paths) — no other writer |
 | `ChatController.last_completed_turn` | `src/blackrose/chat.py::ChatController.__init__` | `Turn \| None` | The reply this send committed, when Stop landed after the complete write; `None` on every other exit. | `src/blackrose/turns.py::TurnRunner.run` (reset), `src/blackrose/turns.py::TurnRunner._complete` (set, on both its Stop and normal paths) — no other writer |
 | `ChatController.outbound` | `src/blackrose/chat.py::ChatController.__init__` | `OutboundPolicy \| None` | This reply's web/remote-image authorization; none means every outbound tool refuses (`src/blackrose/chat.py::ChatController._call_tool`, `src/blackrose/chat.py::ChatController._authorize_remote_image`). | `src/blackrose/turns.py::TurnRunner._install_outbound_policy` (install), the `finally` of `src/blackrose/turns.py::TurnRunner._run` (clear) |
 | `TurnRunner.assistant` | `src/blackrose/turns.py::TurnRunner.__init__` | `StoredMessage \| None` | The pending reply row this turn owns. Exists only after `begin_turn` committed. | `src/blackrose/turns.py::TurnRunner._begin_turn` — no other writer |
@@ -107,7 +107,7 @@ Three mechanical rules exclude 48 of the 64 combinations:
   audit from `assistant` (both in `src/blackrose/turns.py::TurnRunner._start_reply`); none exists before `_begin_turn`.
 - **R2 (16 rows) `A ∧ ¬S`.** `_begin_turn` assigns `self.assistant` and
   `c.last_request_stored` in the same non-await window, and `S` is
-  reset only at `_run` entry before `A` can exist.
+  reset at `run` and `_run` entry before `A` can exist.
 - **R3 (4 rows) `K ∧ U`.** `_start_reply` attaches one *or* the other
   (a single `if`/`else` on the rigor mode), never both.
 
@@ -122,7 +122,7 @@ exclude 3 rows, leaving 13 reachable for a live turn (48 + 3 = 51 impossible):
 | # | `(G,S,A,C,K,U)` | Status | Where it occurs |
 | --- | --- | --- | --- |
 | 1 | `(0,0,0,0,0,0)` | reachable, stable | Idle before a send; also the end state of a phase-1 failure (`test_turns.py::test_cancel_during_prompt_build_stores_nothing_and_releases_the_turn`) |
-| 2 | `(0,1,0,0,0,0)` | reachable, **hazardous** | At rest after a stored turn, and — the hazard — during a send whose `_run` has not started (H1) |
+| 2 | `(0,1,0,0,0,0)` | reachable, stable | At rest after a stored turn. Before the H1 fix it was also the hazardous shape of a send whose `_run` had not started; `run` now clears `S` before its first await |
 | 3 | `(1,0,0,0,0,0)` | reachable, transient | `PREPARING` |
 | 4 | `(1,1,0,0,0,0)` | **impossible for a turn (R5)** | `G` is only raised in `_run`, which resets `S` in the same statement pair; `S` is only raised with `A`. A controller-level snapshot during a non-turn reservation can match this shape (H5) |
 | 5 | `(1,1,1,0,0,0)` | reachable, transient | `COMMITTED`; also what a Stop during the post-commit prompt rebuild or during `ToolExecutor` construction settles from (`test_cancel_after_the_commit_but_before_any_service_settles_an_empty_reply`) |
@@ -158,7 +158,7 @@ them also has `A` and `S`, which is invariant 3.
 | E11 | Checkpoint tick | `src/blackrose/turns.py::TurnRunner._checkpoint_content` every `CONTENT_CHECKPOINT_SECONDS = 1.0` (module constant in `src/blackrose/turns.py`) |
 | E12 | Drain | `src/blackrose/turns.py::TurnRunner._stop_checkpoints` |
 | E13 | Audit checkpoint | `src/blackrose/citations.py::CitationAudit.checkpoint` → `save_audit`, called at attach and per audit phase |
-| E14 | Second send | refused by `artifacts.exclusive` (entered in `src/blackrose/turns.py::TurnRunner.run`) or by `src/blackrose/turns.py::TurnRunner._run` |
+| E14 | Second send | refused by the `is_generating` guard at the top of `src/blackrose/turns.py::TurnRunner.run`, by `artifacts.exclusive` (entered in `run`) or by the same guard in `src/blackrose/turns.py::TurnRunner._run` |
 | E15 | Startup recovery | `Session.boot` → `recover_interrupted` → `reap_pending` (`src/blackrose/chat.py::ChatController.recover_interrupted`, `src/blackrose/storage/repository.py::Repository.reap_pending`) |
 
 There is no external IPC into a running turn: `Stop` is task cancellation, and
@@ -171,7 +171,7 @@ already snapshotted in `src/blackrose/turns.py::TurnRunner._start_reply`).
 
 | From | Event | Guard | Effect | To |
 | --- | --- | --- | --- | --- |
-| — | E1 | `ChatBusy` if `artifacts.exclusive()` is held (`src/blackrose/turns.py::TurnRunner.run`, `src/blackrose/artifacts.py::ArtifactLifecycle.exclusive`) | Clears `last_completed_turn`; binds the conversation context (`src/blackrose/turns.py::TurnRunner.run`) | `RESTING` (still) |
+| — | E1 | `ChatBusy` if `is_generating` is already set, before any await, or if `artifacts.exclusive()` is held (`src/blackrose/turns.py::TurnRunner.run`, `src/blackrose/artifacts.py::ArtifactLifecycle.exclusive`) | Clears `last_completed_turn` and `last_request_stored` before the first await; binds the conversation context (`src/blackrose/turns.py::TurnRunner.run`) | `RESTING` (still) |
 | `RESTING` | E1 (inside lock) | `not is_generating` (`src/blackrose/turns.py::TurnRunner._run`) | `is_generating = True`, `last_request_stored = False`; snapshots the rigor mode (`src/blackrose/turns.py::TurnRunner._run`) | `PREPARING` |
 | `PREPARING` | E2 | attachment budget, `cancel_title`, model load, reference/skill resolution, vision check, `builder.admit` (`src/blackrose/turns.py::TurnRunner._prepare`) | Installs `outbound` and marks local data exposed when private (`src/blackrose/turns.py::TurnRunner._install_outbound_policy`); stores nothing | `PREPARING` |
 | `PREPARING` | E7/E8 | any failure or Stop before E3 | `finally` of `_run` clears `outbound` and the reservation; no row exists (E7: pinned by `test_cancel_during_prompt_build_stores_nothing_and_releases_the_turn`) | `RESTING` |
@@ -215,8 +215,10 @@ also the states while the final write is in flight.
 1. **One turn at a time per controller.** `is_generating` is checked and raised
    in one non-await window (`src/blackrose/turns.py::TurnRunner._run`), and the artifact lock is taken
    before it (`src/blackrose/turns.py::TurnRunner.run`). A second send cannot enter `_run`, cannot write the turn's
-   rows, and cannot change `is_generating` or `last_request_stored`. It does
-   clear `last_completed_turn` (`run`), which a running turn only sets in its
+   rows, and cannot change `is_generating` or `last_request_stored`: `run`
+   refuses a send while `is_generating` is set before it clears either flag.
+   A send refused only by the artifact lock (held without the flag) has
+   already cleared `last_completed_turn`, which a running turn only sets in its
    final step before returning or raising. Pinned by
    `test_a_refused_second_send_does_not_disturb_the_live_turn`.
 2. **Reply identity and `last_request_stored` are set atomically.** Both fields
@@ -283,14 +285,14 @@ also the states while the final write is in flight.
 ### Answers to the bead's questions
 
 - **Every reachable combination** is enumerated above: 13 of 64 for a live turn.
-  Rules R1–R3 exclude 48 rows; R4–R5 exclude rows 4, 15 and 16. Only row 2 is
-  hazardous. `is_generating` outside a turn can reproduce row 4's shape; that is
+  Rules R1–R3 exclude 48 rows; R4–R5 exclude rows 4, 15 and 16. Row 2 was
+  hazardous until H1 was fixed; no row is now. `is_generating` outside a turn can reproduce row 4's shape; that is
   H5, not a turn state.
 - **Cancellation during each shielded await** is answered in the table below.
 - **`last_request_stored` with `assistant is None`?** Within a runner: no
   (invariant 2). At controller level: yes and it is the normal resting value
-  after any stored turn — and it is exactly the hazardous window when a new
-  send is cancelled before `_run` begins (H1).
+  after any stored turn. Before the H1 fix it was also the value a new send
+  cancelled before `_run` began reported; `run` now clears it first.
 - **`assistant` set while `last_request_stored` is `False`?** No path: the two
   are assigned together (`_begin_turn`) and nothing else writes either.
 - **`completed` set while the row is still `pending`?** No: `completed` is only
@@ -327,19 +329,20 @@ also the states while the final write is in flight.
 | `asyncio.shield(finish_message)` | `src/blackrose/turns.py::TurnRunner._complete` | Waits for the outcome; commits → `completed` + follow-ups; fails → logs and settles `CANCELLED` |
 | `asyncio.shield(cleanup)` in `_settle_interrupted` | `src/blackrose/turns.py::TurnRunner._settle_interrupted` | Cannot cancel the terminal write; repeat Stops are absorbed |
 
-- **H1 — `defect` — `src/blackrose/turns.py::TurnRunner.run` vs `src/blackrose/turns.py::TurnRunner._run`.** `run` clears
-  `last_completed_turn` before its first await but resets `last_request_stored`
+- **H1 — `defect` — `src/blackrose/turns.py::TurnRunner.run` vs `src/blackrose/turns.py::TurnRunner._run`.**
+  Resolved: `src/blackrose/turns.py::TurnRunner.run` now refuses a busy send and
+  clears `last_request_stored` beside `last_completed_turn` before its first
+  await; pinned by
+  `tests/test_sm_01_turn_orchestration.py::TurnOrchestrationTests.test_a_send_cancelled_before_admission_reports_nothing_stored`.
+  As found: `run` cleared
+  `last_completed_turn` before its first await but reset `last_request_stored`
   only inside `_run`, after `ensure_conversation()` and the keyed-provider
   credential lookup (which awaits a thread for `opencode-go` models,
   `src/blackrose/backend/opencode.py::OpenCodeGoClient.turn_credentials`). A Stop in that window leaves the previous turn's
-  `True` in place. The GUI then concludes this send stored its request
-  (the `last_request_stored` checks in `Session._send` and `Session._interrupted_answer`): it neither restores the composer text nor
-  records the unsaved outcome, and `_draft_sending` is consumed, so the typed
-  text exists nowhere. Reproduced deterministically by
-  `test_a_send_cancelled_before_admission_inherits_the_last_stored_flag_documented_follow_up`
-  (the test asserts current behaviour; applying the patch in *Formalization
-  decisions* inverts its one `assertTrue`). Confirmation: the test plus a GUI
-  probe that presses Stop immediately after Enter with a keyed provider.
+  `True` in place. The GUI then concluded this send stored its request
+  (the `last_request_stored` checks in `Session._send` and `Session._interrupted_answer`): it neither restored the composer text nor
+  recorded the unsaved outcome, and `_draft_sending` was consumed, so the typed
+  text existed nowhere.
 - **H2 — `fragile` — `src/blackrose/turns.py::TurnRunner._stop_checkpoints`.** `_stop_checkpoints` shields the drain
   once, not in a loop, unlike `_complete` and `_settle_interrupted`. A repeat Stop while it is awaiting raises out of `_complete`, so the
   drain is abandoned; correctness is restored only because settlement calls
@@ -366,28 +369,25 @@ also the states while the final write is in flight.
 - **H5 — `fragile` — `src/blackrose/chat.py::ChatController.select_model`, `_review_edit`, `_restore_edit_backup`, `review_library_add`; `src/blackrose/diagram_repairs.py::DiagramRepairs.repair`.**
   `is_generating` is a shared reservation, so `is_generating == True` does not
   imply a turn is running, and a second send's refusal message depends on which
-  holder is active: `artifacts.exclusive` ("Wait for the current reply or
-  artifact cleanup to finish", `src/blackrose/artifacts.py::ArtifactLifecycle.exclusive`) when a turn or repair holds
-  the lock, `_run`'s "A reply is already in progress" (`src/blackrose/turns.py::TurnRunner._run`) when
-  `select_model` or a library/edit approval does. Nothing reads the flag as a
+  holder is active: "A reply is already in progress" from the `is_generating`
+  guard in `src/blackrose/turns.py::TurnRunner.run` whenever any holder has set
+  the flag, and `artifacts.exclusive`'s "Wait for the current reply or
+  artifact cleanup to finish" (`src/blackrose/artifacts.py::ArtifactLifecycle.exclusive`) only when the lock is held
+  without the flag — artifact cleanup, or a turn still inside `run` before
+  `_run` sets it. Nothing reads the flag as a
   phase discriminator, so this is not a correctness defect; it is the reason the
   6-tuple, not `is_generating`, is the machine.
 - **H6 — `none-found` — the rest of the machine.** The writer is exclusive, the
   identity handoff is shielded, both terminal paths drain before writing, the
   repository refuses late checkpoints, and the only two reachable-but-wrong
-  tuples/behaviours are H1 and the H2 emergency path. No lost update, stranded
+  tuples/behaviours were H1 (now resolved) and the H2 emergency path. No lost update, stranded
   obligation or duplicated settlement was found in a product path.
 
 ## Formalization decisions
 
-**H1 fixed in `turns.py`; the rest is unchanged.** The two files in scope
-(`src/blackrose/turns.py`, `src/blackrose/chat.py`) are shared with concurrent
-work, but the demonstrated defect (H1) was applied by the orchestrator once the
-concurrent beads had landed: `TurnRunner.run` now takes the refusal guard before
-its first await and clears `last_request_stored` beside `last_completed_turn`.
-The characterization test was inverted to
-`test_a_send_cancelled_before_admission_reports_nothing_stored`. The patch is
-kept below for review.
+**H1 fixed in `turns.py`; the rest is unchanged.** `TurnRunner.run` takes the
+refusal guard before its first await and clears `last_request_stored` beside
+`last_completed_turn`:
 
 ```python
     async def run(self, *args, **kwargs):
@@ -405,12 +405,8 @@ Why here and not beside `_run`'s reset: clearing the flag earlier without the gu
 a `ChatBusy`-refused send erase the live turn's flag, turning H1's lost draft
 into a restored draft on top of an already-stored request. The guard must move
 with it. `ChatBusy` is already imported in `src/blackrose/turns.py`, and `_run`'s own check
-stays as the admission point's guard — it is also the path taken when
-`select_model`, an edit approval or a library approval holds the reservation.
-
-Follow-up after the patch: invert the single `assertTrue(c.last_request_stored)`
-in `test_a_send_cancelled_before_admission_inherits_the_last_stored_flag_documented_follow_up`
-and drop the `_documented_follow_up` suffix.
+stays as the admission point's guard for a reservation taken while `run` was
+awaiting.
 
 Two smaller items are deliberately left alone:
 
@@ -425,8 +421,8 @@ Two smaller items are deliberately left alone:
 Nothing in this machine needs a new explicit phase enum. The 13 reachable tuples
 are a strict function of `(is_generating, last_request_stored, assistant,
 completed, checkpoint_task, citation_audit)`, every impossible combination is
-excluded by a structural rule, and the only guard the code lacks is H1's
-pre-admission flag reset.
+excluded by a structural rule, and the one missing guard, H1's pre-admission
+flag reset, is now in `run`.
 
 ## Verification
 
@@ -445,6 +441,6 @@ above; it is deterministic and needs no provider, display or GPU.
 
 The machine is entirely in-process, so no `--gui` or live model probe is needed.
 H1's user-visible consequence was reasoned from `src/blackrose/gui/session.py::Session._send`
-and `src/blackrose/gui/session.py::Session._interrupted_answer` and reproduced at the controller level, not
+and `src/blackrose/gui/session.py::Session._interrupted_answer` and its fix is pinned at the controller level, not
 through the native window; a GUI probe would need a keyed provider and a Stop
 tapped within the credential lookup.

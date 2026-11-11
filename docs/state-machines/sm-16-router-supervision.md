@@ -84,7 +84,7 @@ Router supervision (`RouterService` and `RouterKey`):
 | `_process` | `RouterService.__init__` | `Popen \| None` | set only when *this* process spawned the router | `_launch` (`Popen`), cleared in `_launch`'s post-spawn `except` and `close`'s `finally` |
 | `_output` | `RouterService.__init__` | `RouterOutput \| None` | the drain thread for the child's stdout/stderr | `_launch` (last statement), cleared in `_launch` (after joining the previous one) and `close`'s outer `finally` |
 | `_operation` | `RouterService.__init__` | `asyncio.Lock` | serializes `ensure_running` and `close` | both |
-| `lock_path` | `RouterService.__init__` | `Path` | `<state>/llama-router-<endpoint>.lock`, a startup-only `flock` | `ensure_running` (taken in the startup section, released in its `finally`) |
+| `lock_path` | `RouterService.__init__` | `Path` | `<state>/llama-router-<sha256(endpoint)[:16]>.lock` (`src/blackrose/backend/service.py::_endpoint_id`), a startup-only `flock` | `ensure_running` (taken in the startup section, released in its `finally`) |
 | `start_timeout`, `stop_timeout` | `RouterService.__init__` | float | 30 s startup bound, 60 s SIGTERM grace (`src/blackrose/config.py::Config.router_start_timeout`, `src/blackrose/config.py::Config.router_stop_timeout`) | constructor |
 | `_warnings` | `RouterService.__init__` | `list[str]` | undelivered adoption warnings | `_check_adopted` (append), drained by `take_warnings` |
 | router key file | `src/blackrose/backend/service.py::RouterKey.create` | 0600 file | the credential the router requires on `/v1/models` | `RouterKey.create` (atomic replace) |
@@ -296,7 +296,7 @@ Model residency and capabilities (statements in `load`, `unload` and `_inspect`)
    launch (`_launch`'s two `except` blocks); a router that survives SIGKILL keeps
    its key (the "a surviving router keeps its key" comment in `close`). Pinned by
    `test_close_reaps_the_owned_router_and_is_idempotent` and
-   `tests/test_router_service.py::RouterServiceTests.test_launch_waits_until_ready_and_close_reaps_owned_process`.
+   `tests/test_router_service.py::RouterServiceTests.test_next_desktop_adopts_a_surviving_key_protected_router_silently`.
 10. **A configured key file is never removed.** Only `key.owned` is unlinked
     (`src/blackrose/backend/service.py::RouterKey.remove`). Pinned by
     `test_a_failed_launch_never_removes_a_configured_key_file` and

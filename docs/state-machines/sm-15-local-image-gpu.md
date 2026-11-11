@@ -215,8 +215,9 @@ Session lifecycle (statements in `generate`, `batch`, `_job`, `_prepare_memory`,
 7. **A dead window's model is reaped only after its deadline.** `reap_orphan`
    requires `until <= now` *and* a dead pid. Pinned by
    `test_a_dead_owner_keeps_its_warm_model_until_the_deadline`.
-8. **No job runs outside the handoff lock.** `generate` and `batch` (each under
-   `async with self._lock()`) are the only callers of `_job`. Pinned indirectly by
+8. **No job runs outside the handoff lock.** `generate` is the only caller of
+   `_job`, at two sites: inside its own `async with self._lock()`, or — when a
+   `batch` session is bound — inside the lock `batch` holds for the round. Pinned indirectly by
    `test_the_handoff_lock_is_free_after_a_failed_submission` and
    `test_cancellation_restores_the_chat_model_once`.
 9. **GPU recovery is cancellation-proof and runs once.** `_run_shielded` awaits a
