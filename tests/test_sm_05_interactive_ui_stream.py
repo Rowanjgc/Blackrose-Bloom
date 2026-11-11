@@ -288,6 +288,25 @@ class BlockLifecycleTests(_RepositoryCase):
         with self.assertRaisesRegex(ValueError, 'Only an invalid UI block can be repaired'):
             await self.repo.repair_block(self.assistant.id, again)
 
+    async def test_repair_must_advance_the_source_sequence(self):
+        # H2: invariant 7 for repairs. The page drops a lower sequence, so a
+        # stale repair would be stored but never shown until a reload.
+        stream = await self.one_round(BAD + '\n')
+        block = dict(stream.blocks[0])
+        repaired = dict(block)
+        apply_repair(repaired, form_source(), 'form')
+        for stale in (block['source_sequence'], block['source_sequence'] - 1):
+            with self.subTest(source_sequence=stale), \
+                    self.assertRaisesRegex(ValueError, 'advance the source sequence'):
+                await self.repo.repair_block(self.assistant.id, repaired | {'source_sequence': stale})
+        saved = await self.repo.ui_block(self.conversation.id, self.assistant.id, block['block_id'])
+        self.assertEqual((saved['status'], saved['source_revision'], saved['source_sequence']),
+                         ('invalid', 1, block['source_sequence']))
+        await self.repo.repair_block(self.assistant.id, repaired)
+        saved = await self.repo.ui_block(self.conversation.id, self.assistant.id, block['block_id'])
+        self.assertEqual((saved['status'], saved['source_sequence']),
+                         ('ready', block['source_sequence'] + 1))
+
     async def test_repair_guards_revision_identity_and_cancelled_blocks(self):
         stream = await self.one_round(BAD + '\n')
         block = dict(stream.blocks[0])

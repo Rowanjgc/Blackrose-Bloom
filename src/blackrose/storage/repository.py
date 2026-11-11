@@ -1040,6 +1040,10 @@ class Repository:
                     raise ValueError('UI block identity is immutable')
                 if block['source_revision'] != prior['source_revision'] + 1:
                     raise ValueError('UI repair must advance the source revision once')
+                # The page drops an update whose sequence is lower than the one it
+                # shows, so a repair saved with a stale sequence would never appear.
+                if block['source_sequence'] <= prior['source_sequence']:
+                    raise ValueError('UI repair must advance the source sequence')
                 if block['message_id'] != message_id:
                     raise ValueError('UI ownership mismatch')
                 conn.execute('UPDATE message_blocks SET payload=? WHERE block_id=?',

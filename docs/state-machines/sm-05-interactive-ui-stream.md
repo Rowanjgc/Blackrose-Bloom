@@ -156,7 +156,7 @@ No other statement writes `payload.status`: a source-wide search finds only
 | `STREAMING` | E9 Stop | — | `end('cancelled')` then save (`src/blackrose/turns.py::TurnRunner._save_interrupted`) | `CANCELLED` |
 | `STREAMING` | E10 failure | — | `end('invalid')` then save | `INVALID` |
 | `STREAMING` | E11 crash | row still `streaming` (`src/blackrose/storage/repository.py::Repository.reap_pending`) | status rewritten to `cancelled`, payload otherwise byte-identical | `CANCELLED` |
-| `INVALID` | E8 `repair_block` | prior `invalid`, new `ready`, identity equal, revision exactly +1 (`src/blackrose/storage/repository.py::Repository.repair_block`) | replace payload; `source_sequence` +1 by `apply_repair` (`src/blackrose/ui_documents.py::apply_repair`) | `READY` |
+| `INVALID` | E8 `repair_block` | prior `invalid`, new `ready`, identity equal, revision exactly +1, `source_sequence` above the stored one (`src/blackrose/storage/repository.py::Repository.repair_block`) | replace payload; `source_sequence` +1 by `apply_repair` (`src/blackrose/ui_documents.py::apply_repair`) | `READY` |
 | `INVALID` | `save_blocks` | prior not `streaming` (`src/blackrose/storage/repository.py::Repository.save_blocks`) | identical payload → no write; any change → `ValueError('Finalized UI source is immutable')` | `INVALID` |
 | `READY` | `save_blocks` | as above | identical → no-op; change → refused | `READY` |
 | `READY`/`CANCELLED` | E8 | prior not `invalid` (`src/blackrose/storage/repository.py::Repository.repair_block`) | `ValueError('Only an invalid UI block can be repaired')` | unchanged |
@@ -211,8 +211,11 @@ is confined to `markdown`; no path rewrites an `interactive_ui` block except
    `test_over_limit_final_block_fails_a_ready_round_and_is_dropped_on_abort`.
 7. **`source_sequence` never decreases for a block.** `save_blocks` refuses a
    lower value (`src/blackrose/storage/repository.py::Repository.save_blocks`); `apply_repair` and diagram repair add
-   exactly one (`src/blackrose/ui_documents.py::apply_repair`, `src/blackrose/storage/repository.py::Repository.finish_diagram_repair`). Pinned by
-   `test_finalized_source_is_immutable_including_the_source_sequence`.
+   exactly one (`src/blackrose/ui_documents.py::apply_repair`, `src/blackrose/storage/repository.py::Repository.finish_diagram_repair`),
+   and `repair_block` refuses a repair that does not advance it
+   (`src/blackrose/storage/repository.py::Repository.repair_block`). Pinned by
+   `test_finalized_source_is_immutable_including_the_source_sequence` and
+   `test_repair_must_advance_the_source_sequence`.
 8. **A finalised block is byte-identical to what was accepted.** While
    `prior.status != 'streaming'`, only a payload equal to the stored one is
    accepted (`src/blackrose/storage/repository.py::Repository.save_blocks`); this is what covers `source_sequence`,
@@ -290,12 +293,14 @@ is confined to `markdown`; no path rewrites an `interactive_ui` block except
   (both staging and storage refuse a second repair). As found: `apply_repair`
   staged a repair onto any dict without checking `status`, so it produced
   `ready`/`revision+1` from a `ready`, `cancelled` or already-repaired block.
-  Still open: it accepts a lower `source_sequence` than storage holds, and
-  `save_blocks`'s monotonicity check
-  (`src/blackrose/storage/repository.py::Repository.save_blocks`) has no
-  counterpart in `src/blackrose/storage/repository.py::Repository.repair_block`.
-  The only caller takes the sequence from the block it read, so this needs a
-  second caller to matter.
+  Resolved for sequence: `src/blackrose/storage/repository.py::Repository.repair_block`
+  now refuses a repair whose `source_sequence` is not above the stored one,
+  matching `save_blocks`'s monotonicity check; pinned by
+  `tests/test_sm_05_interactive_ui_stream.py::BlockLifecycleTests.test_repair_must_advance_the_source_sequence`.
+  As found, it accepted a lower or equal sequence. The only caller takes the
+  sequence from the block it read, so no product path did this, but a stale
+  repair would have been stored and then dropped by the page
+  (`ui-runtime/host.jsx::update`) until a reload.
 - **H3 — `fragile` — `src/blackrose/storage/repository.py::Repository.ui_block`/`src/blackrose/storage/repository.py::_attach_batch` vs `src/blackrose/storage/repository.py::Repository.save_blocks`.** The
   repository injects `saved_state`/`state_sequence` when it reads a block, then
   treats the whole payload as the immutable unit when it writes one. A block
@@ -395,8 +400,8 @@ is confined to `markdown`; no path rewrites an `interactive_ui` block except
 
 ## Formalization decisions
 
-**H1 and H2 fixed; H3/H4/H5 need their owners.** H1 is fixed in `turns.py`
-and H2's status guard in `ui_documents.py`. H3 and H5 belong to the storage
+**H1 and H2 fixed; H3/H4/H5 need their owners.** H1 is fixed in `turns.py`,
+H2's status guard in `ui_documents.py` and its sequence guard in `repair_block`. H3 and H5 belong to the storage
 layer and the renderer.
 
 1. **H1, `src/blackrose/turns.py::TurnRunner._repair_ui` — make memory follow the attempted commit.**
@@ -429,12 +434,13 @@ layer and the renderer.
    alternative was to have `_save_interrupted` reconcile the conflicting block by
    re-reading the row — wider and slower.
 
-2. **H2, `src/blackrose/ui_documents.py::apply_repair` — one-line defence in depth.**
+2. **H2, `src/blackrose/ui_documents.py::apply_repair` and `src/blackrose/storage/repository.py::Repository.repair_block`.**
    `if block.get('status') != 'invalid': raise ValueError('Only an invalid UI block can be repaired')`
    now runs before `validate_document`. It makes the staging layer agree with
    `src/blackrose/storage/repository.py::Repository.repair_block`, costs nothing, and removes the confusing
    "identity is immutable" error at settlement time. The `source_sequence` half
-   of H2 is not addressed.
+   is a second guard in `repair_block`: refuse unless the sequence is above the
+   stored one, as `save_blocks` does (`tests/test_sm_05_interactive_ui_stream.py::BlockLifecycleTests.test_repair_must_advance_the_source_sequence`).
 
 3. **H3, `src/blackrose/storage/repository.py::Repository.save_blocks` — compare the immutable payload without the read
    projection.** Pop `saved_state`/`state_sequence` from `prior` (or compare
