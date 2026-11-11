@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "review_status": "Synthetic academic-style source packs; paired generated drafts, no real-world research or human sign-off",
+  "cases": [
+    {
+      "id": "academic-observational-sleep",
+      "question": "Using only the supplied materials, write a substantive three-paragraph critical research summary. Explain the design, enrollment versus follow-up sample, and the unadjusted versus adjusted results, including uncertainty. Explain what this evidence permits us to conclude about causation and applicability, and identify useful follow-up research. Preserve the numerical findings rather than replacing the answer with generic cautions. Do not give personal health advice or invent publication credentials.",
+      "sources": [
+        {
+          "title": "Synthetic sleep cohort: methods and results",
+          "text": "This synthetic report describes a prospective observational cohort, not a randomized experiment. Investigators enrolled 92 adults aged 40–60 and followed them for six months. Eighty-two participants completed the follow-up questionnaire; ten did not. Participants chose their own activity levels. No exercise program was assigned.\n\nActivity was measured with a self-reported weekly questionnaire. Sleep quality was measured on a 0–20 questionnaire scale, with higher scores indicating better sleep. Investigators compared people reporting at least 150 minutes of weekly exercise with those reporting less. At follow-up, the unadjusted difference in mean sleep-quality score was 1.2 points, with a 95 percent confidence interval from 0.2 to 2.2 points. After adjustment for baseline sleep score, age, and work schedule, the estimated difference was 0.7 points, with a 95 percent confidence interval from −0.3 to 1.7 points. The adjusted interval includes zero. The report does not supply the underlying participant-level data.\n\nThe report describes an association between reported activity and reported sleep quality. No causal effect was established. The investigators did not randomly assign exercise, and unmeasured differences between groups could explain some or all of the observed association."
+        },
+        {
+          "title": "Synthetic sleep cohort: limitations and availability note",
+          "text": "Both activity and sleep were self-reported. Missing follow-up questionnaires may introduce attrition bias; the report does not establish whether the ten missing participants differed from the 82 completers. The investigators did not measure clinical sleep disorders or objective sleep duration.\n\nChildren and adults outside ages 40–60 were not studied. The report provides no basis for estimating an effect in those groups. This source pack contains a single research-team report and no independent replication. It does not state whether peer review occurred. These omissions do not demonstrate that the association is false, but they limit the conclusions that can be drawn from this material."
+        }
+      ]
+    },
+    {
+      "id": "academic-corrected-energy-report",
+      "question": "Write a three-paragraph critical synthesis of these source documents for a research notebook. Resolve the initial versus corrected sample count, report the measured efficiency result precisely, and distinguish that result from the forum's broader claim. Discuss source quality and the evidence still needed for a claim about total device energy use or general applicability. Preserve the supported quantitative findings and identify which document takes precedence. Use only this source pack.",
+      "sources": [
+        {
+          "title": "Synthetic exporter benchmark: initial report, 2025-02-01",
+          "text": "An initial laboratory report evaluated version 2.2 of an image-export program. The report listed 240 export tasks and an 18 percent reduction in CPU-package energy relative to version 2.1. CPU-package energy was measured through the processor's energy counter. This metric excludes display, storage, network, and power-supply energy. All tasks ran on one desktop model under one Linux distribution. The report did not measure whole-device energy use or battery life.\n\nThis was an internal laboratory report. The initial report did not provide an independent replication or state that it had undergone peer review."
+        },
+        {
+          "title": "Synthetic exporter benchmark: correction, 2025-02-14",
+          "text": "This correction explicitly supersedes the initial report's sample count and CPU-energy result. Twenty-four duplicate task records were removed, leaving 216 distinct export tasks. On the corrected data, version 2.2 used 12 percent less CPU-package energy than version 2.1, with a bootstrap 95 percent interval from 7 to 17 percent less. The 18 percent value in the initial report must not be used as the corrected estimate.\n\nThe experiment still used one desktop model and one Linux distribution. There were no Windows, macOS, laptop, or battery-life tests. Whole-device energy use was not measured. No information in this correction establishes performance outside the tested task collection and hardware/software combination. The correction supplies aggregate results but no raw task records."
+        },
+        {
+          "title": "Synthetic anonymous forum post, 2025-02-20",
+          "text": "An anonymous forum contributor claims that version 2.2 saves 35 percent of total device energy on every computer. The post contains no measurements, hardware details, methods, raw data, or references. It does not identify a research institution or say that independent testing or peer review occurred. The laboratory reports in this source pack do not establish the forum's 35 percent whole-device claim."
+        }
+      ]
+    },
+    {
+      "id": "academic-offline-generalization",
+      "question": "Using only the supplied documents, write a substantive three-paragraph technical research brief on whether version 2.2 is established to work offline universally. Summarize exactly what was tested and observed, distinguish version 2.0 from 2.2, and explain the evidence gap for untested platforms and long-running operation. Propose a concrete follow-up validation plan. Retain useful positive results while separating observations, extrapolations, and future tests.",
+      "sources": [
+        {
+          "title": "Synthetic offline-export protocol and observations",
+          "text": "A laboratory tested offline export with version 2.2 on three laptops: two running Linux and one running Windows 11. Each laptop's network interfaces were disabled before testing. Six previously stored projects were exported on each laptop, for 18 completed exports in total. All 18 exports finished successfully and produced files that the test harness could reopen. The test checked export completion and file readability, not full semantic equivalence of every exported field.\n\nThe longest individual session lasted 25 minutes. The investigators did not test cold installation, sign-in, model downloads, online collaboration, or any operation requiring a new remote resource. Required software and project resources had already been installed and cached. No macOS, ChromeOS, mobile, or server environment was tested. No tests ran for more than 25 minutes."
+        },
+        {
+          "title": "Synthetic product-version note and replication statement",
+          "text": "The version note states that version 2.2 supports offline export of locally cached projects. Version 2.0 did not support offline export. Support for offline export is not a statement that every feature works without a connection.\n\nThe source pack includes no independent replication and no systematic sampling of laptop models. Successful tests on three laptops establish successful operation in those specific test conditions. They do not establish operation on every laptop or every operating system. Untested platforms and longer sessions remain unknown; the absence of those tests does not establish that the software fails there. This note provides no warranty of universal compatibility."
+        }
+      ]
+    }
+  ]
+}

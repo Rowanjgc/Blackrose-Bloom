@@ -1,0 +1,46 @@
+# Python environments, caches, and build output
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Machine-local configuration and scratch output
+.env
+.env.*
+!.env.example
+/config.toml
+/artifacts/
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Generated previews and Motion Canvas dependencies/build output
+docs/paper-preview/
+docs/spacing-preview/
+node_modules/
+animation-runtime/exports.json
+src/blackrose/gui/static/motion-canvas-runtime.js
+src/blackrose/gui/static/motion-canvas-NOTICES.txt
+src/blackrose/gui/static/ui-runtime.js
+src/blackrose/gui/static/ui-contract.json
+src/blackrose/gui/static/ui-NOTICES.txt
+src/blackrose/gui/static/mermaid-host.html
+src/blackrose/gui/static/mermaid-manifest.json
+src/blackrose/gui/static/mermaid-NOTICES.txt
+
+# Local-only records kept out of the (eventually public) repository:
+# raw audit evidence and context-audit captures.
+docs/context-audit/
+
+# Private companion repository (records and issue tracker) and its tracker link
+/.private/
+/.beads

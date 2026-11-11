@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+blackrose_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+if [[ ! -x "$blackrose_root/.venv/bin/blackrose-bloom" ]]; then
+    uv sync --directory "$blackrose_root" --locked --python 3.13
+fi
+exec "$blackrose_root/.venv/bin/blackrose-bloom" "$@"

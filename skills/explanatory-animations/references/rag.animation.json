@@ -1,0 +1,397 @@
+{
+  "version": 1,
+  "title": "How a RAG pipeline works",
+  "description": "A question retrieves relevant documents. The selected documents become context for the language model, which produces a grounded answer. Retrieval supplies evidence; it does not guarantee correctness.",
+  "duration": 12,
+  "nodes": [
+    {
+      "id": "to_search",
+      "kind": "arrow",
+      "x": 230,
+      "y": 204,
+      "x2": 310,
+      "y2": 204,
+      "color": "neutral"
+    },
+    {
+      "id": "to_model",
+      "kind": "arrow",
+      "x": 500,
+      "y": 204,
+      "x2": 580,
+      "y2": 204,
+      "color": "neutral"
+    },
+    {
+      "id": "to_answer",
+      "kind": "arrow",
+      "x": 750,
+      "y": 204,
+      "x2": 820,
+      "y2": 204,
+      "color": "neutral"
+    },
+    {
+      "id": "question",
+      "kind": "box",
+      "x": 40,
+      "y": 170,
+      "width": 190,
+      "height": 68,
+      "label": "Question",
+      "color": "neutral"
+    },
+    {
+      "id": "retrieval",
+      "kind": "box",
+      "x": 310,
+      "y": 170,
+      "width": 190,
+      "height": 68,
+      "label": "Retrieve",
+      "color": "neutral"
+    },
+    {
+      "id": "model",
+      "kind": "box",
+      "x": 580,
+      "y": 170,
+      "width": 170,
+      "height": 68,
+      "label": "LLM + context",
+      "color": "neutral"
+    },
+    {
+      "id": "answer",
+      "kind": "box",
+      "x": 820,
+      "y": 170,
+      "width": 110,
+      "height": 68,
+      "label": "Answer",
+      "color": "neutral"
+    },
+    {
+      "id": "heading",
+      "kind": "text",
+      "x": 480,
+      "y": 75,
+      "label": "Retrieval-augmented generation",
+      "color": "neutral"
+    },
+    {
+      "id": "packet",
+      "kind": "dot",
+      "x": 230,
+      "y": 204,
+      "color": "rose",
+      "opacity": 0
+    },
+    {
+      "id": "doc1",
+      "kind": "box",
+      "x": 285,
+      "y": 340,
+      "width": 110,
+      "height": 80,
+      "label": "Doc A\nRelevant",
+      "color": "green",
+      "opacity": 0.35
+    },
+    {
+      "id": "doc2",
+      "kind": "box",
+      "x": 415,
+      "y": 340,
+      "width": 110,
+      "height": 80,
+      "label": "Doc B",
+      "color": "neutral",
+      "opacity": 0.35
+    },
+    {
+      "id": "doc3",
+      "kind": "box",
+      "x": 545,
+      "y": 340,
+      "width": 110,
+      "height": 80,
+      "label": "Doc C\nRelevant",
+      "color": "green",
+      "opacity": 0.35
+    }
+  ],
+  "tracks": [
+    {
+      "node": "packet",
+      "property": "x",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 230
+        },
+        {
+          "time": 1,
+          "value": 230
+        },
+        {
+          "time": 2,
+          "value": 310
+        },
+        {
+          "time": 7,
+          "value": 500
+        },
+        {
+          "time": 8,
+          "value": 580
+        },
+        {
+          "time": 10,
+          "value": 750
+        },
+        {
+          "time": 11,
+          "value": 820
+        },
+        {
+          "time": 12,
+          "value": 820
+        }
+      ]
+    },
+    {
+      "node": "packet",
+      "property": "opacity",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0
+        },
+        {
+          "time": 0.5,
+          "value": 1
+        },
+        {
+          "time": 11,
+          "value": 1
+        },
+        {
+          "time": 12,
+          "value": 0
+        }
+      ]
+    },
+    {
+      "node": "question",
+      "property": "emphasis",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 1
+        },
+        {
+          "time": 2,
+          "value": 0
+        }
+      ]
+    },
+    {
+      "node": "retrieval",
+      "property": "emphasis",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0
+        },
+        {
+          "time": 2,
+          "value": 1
+        },
+        {
+          "time": 6.5,
+          "value": 1
+        },
+        {
+          "time": 7.5,
+          "value": 0
+        }
+      ]
+    },
+    {
+      "node": "doc1",
+      "property": "opacity",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0.35
+        },
+        {
+          "time": 3,
+          "value": 0.35
+        },
+        {
+          "time": 4,
+          "value": 1
+        }
+      ]
+    },
+    {
+      "node": "doc1",
+      "property": "emphasis",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0
+        },
+        {
+          "time": 4,
+          "value": 1
+        },
+        {
+          "time": 7,
+          "value": 1
+        },
+        {
+          "time": 8,
+          "value": 0
+        }
+      ]
+    },
+    {
+      "node": "doc2",
+      "property": "opacity",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0.35
+        },
+        {
+          "time": 4,
+          "value": 0.35
+        },
+        {
+          "time": 5,
+          "value": 0.1
+        }
+      ]
+    },
+    {
+      "node": "doc3",
+      "property": "opacity",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0.35
+        },
+        {
+          "time": 4.5,
+          "value": 0.35
+        },
+        {
+          "time": 5.5,
+          "value": 1
+        }
+      ]
+    },
+    {
+      "node": "doc3",
+      "property": "emphasis",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0
+        },
+        {
+          "time": 5.5,
+          "value": 1
+        },
+        {
+          "time": 7,
+          "value": 1
+        },
+        {
+          "time": 8,
+          "value": 0
+        }
+      ]
+    },
+    {
+      "node": "model",
+      "property": "emphasis",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0
+        },
+        {
+          "time": 7,
+          "value": 0
+        },
+        {
+          "time": 8,
+          "value": 1
+        },
+        {
+          "time": 10,
+          "value": 0
+        }
+      ]
+    },
+    {
+      "node": "answer",
+      "property": "emphasis",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0
+        },
+        {
+          "time": 10,
+          "value": 0
+        },
+        {
+          "time": 11,
+          "value": 1
+        },
+        {
+          "time": 12,
+          "value": 1
+        }
+      ]
+    }
+  ],
+  "cues": [
+    {
+      "time": 0,
+      "text": "1. Start with a question that needs evidence from your documents."
+    },
+    {
+      "time": 2,
+      "text": "2. Search the index for passages related to the question."
+    },
+    {
+      "time": 4,
+      "text": "3. Select Doc A and Doc C as relevant evidence; leave Doc B out."
+    },
+    {
+      "time": 7,
+      "text": "4. Send the question and selected passages to the language model."
+    },
+    {
+      "time": 10,
+      "text": "5. Generate an answer grounded in those passages. Check its citations."
+    }
+  ]
+}

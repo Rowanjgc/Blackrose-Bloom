@@ -1,0 +1,361 @@
+{
+  "version": 1,
+  "title": "TCP three-way handshake",
+  "description": "The client sends SYN, the server replies SYN-ACK, and the client sends ACK. Both sides can then exchange data. The arrows show packet direction; the highlighted endpoint shows the active participant.",
+  "duration": 10,
+  "loop": true,
+  "nodes": [
+    {
+      "id": "syn",
+      "kind": "arrow",
+      "x": 290,
+      "y": 240,
+      "x2": 670,
+      "y2": 240,
+      "label": "1 \u00b7 SYN"
+    },
+    {
+      "id": "syn_ack",
+      "kind": "arrow",
+      "x": 670,
+      "y": 320,
+      "x2": 290,
+      "y2": 320,
+      "label": "2 \u00b7 SYN-ACK"
+    },
+    {
+      "id": "ack",
+      "kind": "arrow",
+      "x": 290,
+      "y": 400,
+      "x2": 670,
+      "y2": 400,
+      "label": "3 \u00b7 ACK"
+    },
+    {
+      "id": "client",
+      "kind": "box",
+      "x": 90,
+      "y": 100,
+      "width": 200,
+      "height": 80,
+      "label": "Client"
+    },
+    {
+      "id": "server",
+      "kind": "box",
+      "x": 670,
+      "y": 100,
+      "width": 200,
+      "height": 80,
+      "label": "Server"
+    },
+    {
+      "id": "connected",
+      "kind": "text",
+      "x": 480,
+      "y": 475,
+      "label": "Connection established",
+      "opacity": 0
+    },
+    {
+      "id": "packet",
+      "kind": "dot",
+      "x": 290,
+      "y": 240,
+      "color": "rose",
+      "opacity": 0
+    }
+  ],
+  "tracks": [
+    {
+      "node": "syn",
+      "property": "opacity",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0
+        },
+        {
+          "time": 0.5,
+          "value": 1
+        }
+      ]
+    },
+    {
+      "node": "syn_ack",
+      "property": "opacity",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0
+        },
+        {
+          "time": 2.8,
+          "value": 0
+        },
+        {
+          "time": 3.2,
+          "value": 1
+        }
+      ]
+    },
+    {
+      "node": "ack",
+      "property": "opacity",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0
+        },
+        {
+          "time": 5.6,
+          "value": 0
+        },
+        {
+          "time": 6,
+          "value": 1
+        }
+      ]
+    },
+    {
+      "node": "client",
+      "property": "emphasis",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0
+        },
+        {
+          "time": 0.5,
+          "value": 1
+        },
+        {
+          "time": 2.5,
+          "value": 0
+        },
+        {
+          "time": 5.2,
+          "value": 1
+        },
+        {
+          "time": 6,
+          "value": 1
+        },
+        {
+          "time": 8,
+          "value": 0
+        }
+      ]
+    },
+    {
+      "node": "server",
+      "property": "emphasis",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0
+        },
+        {
+          "time": 2.5,
+          "value": 1
+        },
+        {
+          "time": 3.2,
+          "value": 1
+        },
+        {
+          "time": 5.2,
+          "value": 0
+        },
+        {
+          "time": 8,
+          "value": 1
+        },
+        {
+          "time": 10,
+          "value": 1
+        }
+      ]
+    },
+    {
+      "node": "packet",
+      "property": "x",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 290
+        },
+        {
+          "time": 0.5,
+          "value": 290
+        },
+        {
+          "time": 2.5,
+          "value": 670
+        },
+        {
+          "time": 3.2,
+          "value": 670
+        },
+        {
+          "time": 5.2,
+          "value": 290
+        },
+        {
+          "time": 6,
+          "value": 290
+        },
+        {
+          "time": 8,
+          "value": 670
+        },
+        {
+          "time": 10,
+          "value": 670
+        }
+      ]
+    },
+    {
+      "node": "packet",
+      "property": "y",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 240
+        },
+        {
+          "time": 2.5,
+          "value": 240
+        },
+        {
+          "time": 3.2,
+          "value": 320
+        },
+        {
+          "time": 5.2,
+          "value": 320
+        },
+        {
+          "time": 6,
+          "value": 400
+        },
+        {
+          "time": 10,
+          "value": 400
+        }
+      ]
+    },
+    {
+      "node": "packet",
+      "property": "opacity",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0
+        },
+        {
+          "time": 0.5,
+          "value": 1
+        },
+        {
+          "time": 2.4,
+          "value": 1
+        },
+        {
+          "time": 2.6,
+          "value": 0
+        },
+        {
+          "time": 3,
+          "value": 0
+        },
+        {
+          "time": 3.2,
+          "value": 1
+        },
+        {
+          "time": 5.1,
+          "value": 1
+        },
+        {
+          "time": 5.3,
+          "value": 0
+        },
+        {
+          "time": 5.8,
+          "value": 0
+        },
+        {
+          "time": 6,
+          "value": 1
+        },
+        {
+          "time": 7.9,
+          "value": 1
+        },
+        {
+          "time": 8.1,
+          "value": 0
+        },
+        {
+          "time": 10,
+          "value": 0
+        }
+      ]
+    },
+    {
+      "node": "connected",
+      "property": "opacity",
+      "easing": "smooth",
+      "keyframes": [
+        {
+          "time": 0,
+          "value": 0
+        },
+        {
+          "time": 8,
+          "value": 0
+        },
+        {
+          "time": 8.5,
+          "value": 1
+        },
+        {
+          "time": 10,
+          "value": 1
+        }
+      ]
+    }
+  ],
+  "cues": [
+    {
+      "time": 0,
+      "text": "The client initiates a TCP connection with the server."
+    },
+    {
+      "time": 0.5,
+      "text": "1. Client \u2192 server: SYN requests a connection and supplies the client\u2019s initial sequence number."
+    },
+    {
+      "time": 3.2,
+      "text": "2. Server \u2192 client: SYN-ACK acknowledges that SYN and supplies the server\u2019s initial sequence number."
+    },
+    {
+      "time": 6,
+      "text": "3. Client \u2192 server: ACK acknowledges the server\u2019s SYN."
+    },
+    {
+      "time": 8.5,
+      "text": "The three-way handshake is complete. Both endpoints can exchange application data."
+    }
+  ]
+}

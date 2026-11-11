@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640">
+  <!-- Broad pulp variation and soft, directional fibers rather than pixel grain. -->
+  <defs>
+    <filter id="pulp" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency=".012 .018" numOctaves="3" seed="23" stitchTiles="stitch"/>
+      <feGaussianBlur stdDeviation="1.2"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 .72  0 0 0 0 .68  0 0 0 0 .61  .035 0 0 0 -.009"/>
+    </filter>
+    <filter id="fibers" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency=".11 .17" numOctaves="2" seed="41" stitchTiles="stitch"/>
+      <feGaussianBlur stdDeviation=".65"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 .72  0 0 0 0 .68  0 0 0 0 .61  .04 0 0 0 -.012"/>
+    </filter>
+  </defs>
+  <path fill="white" filter="url(#pulp)" d="M0 0h640v640H0z"/>
+  <path fill="white" filter="url(#fibers)" d="M0 0h640v640H0z"/>
+</svg>

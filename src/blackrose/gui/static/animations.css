@@ -1,0 +1,83 @@
+/* Gothic Bloom, shared by the chat player and its offline export. */
+.animation-document {
+  margin: 1.5rem;
+  background: var(--gb-canvas, #0d0d0d);
+  color: var(--gb-text, #e0e0e0);
+  font: 100%/1.5 var(--gb-font-ui, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  color-scheme: dark;
+}
+.animation-document main { max-width: 60rem; margin: auto; }
+.animation-player {
+  --animation-canvas: var(--gb-canvas, #0d0d0d);
+  --animation-surface: var(--gb-surface-raised, #1a1a1a);
+  --animation-text: var(--gb-text, #e0e0e0);
+  --animation-edge: var(--gb-edge-control, #6e6e6e);
+  --animation-action: var(--gb-action, #ef6461);
+  --animation-neutral: var(--gb-text-secondary, #b3b3b3);
+  --animation-muted: var(--gb-text-secondary, #b3b3b3);
+  --animation-cherry: var(--gb-brand, #b8506b);
+  --animation-rose: var(--gb-action, #ef6461);
+  --animation-blue: var(--gb-info, #9bbcf2);
+  --animation-gold: var(--gb-highlight, #d4af37);
+  --animation-green: var(--gb-success, #8cc792);
+  margin: 1rem 0; overflow: hidden;
+  background: var(--gb-surface, #121212); color: var(--animation-text);
+  border: 1px solid var(--gb-edge-decorative, #333333);
+  border-radius: var(--gb-radius-card, 1rem);
+  font-family: var(--gb-font-ui, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  color-scheme: dark;
+}
+.animation-player *, .animation-player *::before, .animation-player *::after { box-sizing: border-box; }
+.animation-title { padding: 1rem; font-size: 1rem; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.animation-canvas { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; }
+.motion-canvas-frame { border: 0; background: #0d0d0d; }
+.animation-cue { min-height: 3.8em; margin: 0; padding: 1rem 1rem 0; line-height: 1.5; }
+.animation-controls { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; flex-wrap: wrap; }
+.animation-controls button {
+  min-height: 2.75rem; padding: 0.5rem 0.75rem;
+  border: 1px solid var(--animation-edge); border-radius: var(--gb-radius-control, 0.625rem);
+  color: var(--animation-text); background: var(--animation-surface);
+  font: inherit; font-size: 0.875rem; font-weight: 500; cursor: pointer;
+}
+.animation-controls button:hover { background: var(--gb-surface-hover, #222222); }
+.animation-controls button:active { background: var(--gb-edge-decorative, #333333); }
+.animation-controls .animation-play {
+  min-width: 6rem; color: var(--gb-on-action, #0d0d0d);
+  border-color: var(--animation-action); background: var(--animation-action);
+}
+.animation-controls .animation-play:hover, .animation-controls .animation-play:active { background: var(--gb-action-pressed, #d9534f); }
+.animation-controls button:disabled { cursor: default; opacity: 0.65; }
+.animation-controls button:focus-visible, .animation-controls input:focus-visible, .animation-summary summary:focus-visible {
+  outline: 2px solid var(--gb-focus, #f4a9a7); outline-offset: 3px;
+}
+.animation-controls input[type="range"] {
+  flex: 1; min-width: 8rem; min-height: 2.75rem;
+  appearance: none; -webkit-appearance: none; background: transparent;
+  accent-color: var(--animation-action); cursor: pointer;
+}
+.animation-controls input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 2px; background: var(--animation-edge);
+}
+.animation-controls input[type="range"]::-webkit-slider-thumb {
+  appearance: none; -webkit-appearance: none;
+  width: 18px; height: 18px; margin-top: -7px;
+  border: 2px solid var(--animation-canvas); border-radius: 50%; background: var(--animation-action);
+}
+.animation-controls input[type="range"]::-moz-range-track {
+  height: 4px; border-radius: 2px; background: var(--animation-edge);
+}
+.animation-controls input[type="range"]::-moz-range-thumb {
+  width: 14px; height: 14px;
+  border: 2px solid var(--animation-canvas); border-radius: 50%; background: var(--animation-action);
+}
+.animation-loop {
+  display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.75rem;
+  color: var(--gb-text-secondary, #b3b3b3); font-size: 0.875rem; cursor: pointer;
+}
+.animation-loop input { width: 1.125rem; height: 1.125rem; margin: 0; accent-color: var(--animation-action); }
+.animation-time { color: var(--gb-text-secondary, #b3b3b3); font-size: 0.75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.animation-description, .animation-summary {
+  margin: 0; padding: 0 1rem 0.75rem; font-size: 0.875rem; line-height: 1.5;
+  color: var(--gb-text-secondary, #b3b3b3); overflow-wrap: anywhere;
+}
+.animation-summary summary { cursor: pointer; }

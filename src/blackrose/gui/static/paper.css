@@ -1,0 +1,36 @@
+/* Static, locally rendered pulp and softly blurred fibers. Background images sit beneath glyphs and
+   controls: the texture never filters text, intercepts input, or moves. */
+:root { --gb-paper: url("paper-soft.svg"); }
+body {
+  background-image: var(--gb-paper);
+  background-size: 640px 640px;
+}
+body :is(.app-toolbar, .sidebar, .column, .msg, .composer, .dialog, .popover, .sources-panel, .management-card, .toast) {
+  background-image: var(--gb-paper);
+  background-size: 640px 640px;
+}
+body .sidebar {
+  background-color: var(--gb-surface);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+body .column, body .msg.assistant {
+  border-color: #373331;
+  box-shadow: inset 0 1px 0 rgba(224, 215, 201, .035), 0 3px 12px rgba(0, 0, 0, .12);
+}
+body .msg.user { border-color: #45403e; }
+body .column:has(> .msg) { background-image: none; box-shadow: none; }
+body .composer {
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: inset 0 1px 0 rgba(224, 215, 201, .04), 0 5px 18px rgba(0, 0, 0, .24);
+}
+/* The dock's opaque base needs the same grain as the surrounding canvas. */
+body .dock {
+  background-image: var(--gb-paper), linear-gradient(to top, var(--gb-canvas) 55%, transparent);
+  background-size: 640px 640px, auto;
+}
+@media (prefers-contrast: more) {
+  body,
+  body :is(.app-toolbar, .sidebar, .column, .msg, .composer, .dialog, .popover, .sources-panel, .management-card, .toast) { background-image: none; }
+  body .column, body .msg.user, body .msg.assistant { border-color: var(--gb-edge-decorative); }
+  body .dock { background-image: linear-gradient(to top, var(--gb-canvas) 55%, transparent); }
+}

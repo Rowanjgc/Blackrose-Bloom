@@ -1,0 +1,108 @@
+[
+  {
+    "keys": [
+      "ctrl+enter",
+      "alt+enter",
+      "ctrl+s"
+    ],
+    "action": "send",
+    "tui": "composer",
+    "label": "Send"
+  },
+  {
+    "keys": [
+      "ctrl+r"
+    ],
+    "action": "retry",
+    "tui": null,
+    "label": "Retry latest prompt"
+  },
+  {
+    "keys": [
+      "ctrl+c"
+    ],
+    "action": "stop",
+    "tui": "stop",
+    "label": "Stop (copies when text is selected)"
+  },
+  {
+    "keys": [
+      "ctrl+q"
+    ],
+    "action": "quit",
+    "tui": "quit",
+    "label": "Close Blackrose"
+  },
+  {
+    "keys": [
+      "ctrl+n"
+    ],
+    "action": "new_conversation",
+    "tui": "new_conversation",
+    "label": "New chat"
+  },
+  {
+    "keys": [
+      "ctrl+l"
+    ],
+    "action": "focus_list",
+    "tui": "focus_list",
+    "label": "Go to conversations"
+  },
+  {
+    "keys": [
+      "ctrl+b"
+    ],
+    "action": "focus_composer",
+    "tui": "focus_composer",
+    "label": "Go to the message box"
+  },
+  {
+    "keys": [
+      "ctrl+d"
+    ],
+    "action": "delete_conversation",
+    "tui": "delete_conversation",
+    "label": "Delete chat"
+  },
+  {
+    "keys": [
+      "ctrl+v"
+    ],
+    "action": "paste_image",
+    "tui": "paste_image",
+    "label": "Paste image"
+  },
+  {
+    "keys": [
+      "ctrl+\\"
+    ],
+    "action": "toggle_sidebar",
+    "tui": null,
+    "label": "Show or hide conversations"
+  },
+  {
+    "keys": [
+      "ctrl+m"
+    ],
+    "action": "open_models",
+    "tui": null,
+    "label": "Choose a model"
+  },
+  {
+    "keys": [
+      "ctrl+,"
+    ],
+    "action": "open_sources",
+    "tui": null,
+    "label": "Sources and citation rigor"
+  },
+  {
+    "keys": [
+      "shift+tab"
+    ],
+    "action": "cycle_effort",
+    "tui": null,
+    "label": "Cycle reasoning effort (in the message box)"
+  }
+]

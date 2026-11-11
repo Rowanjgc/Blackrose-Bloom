@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Answers arrive as escaped HTML. Generated animation code executes only
+       inside an opaque-origin sandboxed frame with a separate CSP. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self' 'unsafe-eval' file:; style-src 'self' file:; img-src 'self' file: data: https: http:; font-src 'self' file:; frame-src 'self' file:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Blackrose Bloom</title>
+  <link rel="icon" type="image/png" href="blackrose-bloom-logo.png">
+  <link rel="stylesheet" href="bloom.css">
+  <link rel="stylesheet" href="ui.css">
+  <link rel="stylesheet" href="animations.css">
+  <link rel="stylesheet" href="paper.css">
+</head>
+<body>
+  <svg class="sprites" width="0" height="0" aria-hidden="true">
+    <defs>
+      <symbol id="i-attach" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m20 11.5-7.8 7.8a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8"/></symbol>
+      <symbol id="i-sources" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="10" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app" id="app">
+    <header class="app-toolbar" id="app-toolbar">
+      <div class="brand">
+        <img class="brand-logo" src="blackrose-bloom-logo.png" alt="" width="48" height="48">
+        <p class="wordmark">Blackrose</p>
+      </div>
+      <nav class="toolbar-nav" aria-label="Blackrose tools">
+        <button class="btn quiet menu-toggle" id="menu-toggle" type="button"
+                aria-label="Show conversations" title="Show conversations (Ctrl \)"
+                aria-controls="sidebar" aria-expanded="false">
+          <svg aria-hidden="true"><use href="#i-menu"/></svg><span>Conversations</span>
+        </button>
+        <button class="row-control" id="models-button" type="button" data-popup="dialog" aria-keyshortcuts="Control+M" title="Choose a model (Ctrl M)">
+          <span>Models</span><span class="value" id="model-value">Qwen 3.6</span>
+        </button>
+        <button class="row-control" id="workspace-button" type="button" data-popup="dialog"><span>Workspace</span><span class="value" id="workspace-value">Downloads outputs</span></button>
+        <button class="row-control" id="library-button" type="button" data-popup="dialog">
+          <span>Library</span><span class="value">Local sources</span>
+        </button>
+        <button class="row-control" id="skills-button" type="button" data-popup="dialog">
+          <span>Skills</span><span class="value">Manage</span>
+        </button>
+      </nav>
+      <button class="btn new-chat" id="new-chat" type="button">
+        New chat <kbd>Ctrl N</kbd>
+      </button>
+    </header>
+    <aside class="sidebar" id="sidebar" aria-label="Conversations">
+      <h2 class="section-label" id="chats-label">Conversations</h2>
+      <ul class="chat-list" id="chat-list" role="listbox" aria-labelledby="chats-label"></ul>
+      <div class="chat-more" id="chat-more" hidden>
+        <p class="chat-count" id="chat-count" role="status"></p>
+        <button class="btn quiet" id="chat-older" type="button" aria-describedby="chat-count">Load older conversations</button>
+      </div>
+      <div class="sidebar-foot">
+        <button class="row-control" id="help-button" type="button">
+          <span>Keys and commands</span><span class="value"><kbd>/help</kbd></span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Drag to size the sidebar; double-click for the default; arrows step it. -->
+    <div class="resizer" id="resizer" role="separator" tabindex="0" aria-orientation="vertical"
+         aria-controls="sidebar" aria-label="Resize conversations" title="Drag to resize · Ctrl \ hides"></div>
+
+    <main class="main" id="main">
+      <div class="header">
+        <div class="topbar">
+          <h1 id="title">Blackrose</h1>
+          <span class="model-label" id="active-model" aria-label="Response model"></span>
+        </div>
+        <div class="status-line" id="status" role="status" aria-live="polite">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="text" id="status-text">Starting…</span>
+          <span class="model-availability" id="model-availability"></span>
+        </div>
+      </div>
+
+      <section class="transcript" id="transcript" aria-label="Conversation" tabindex="-1">
+        <div class="column" id="column"></div>
+      </section>
+
+      <div class="dock">
+        <form class="composer" id="composer" autocomplete="off">
+          <div class="attachments" id="attachments" aria-label="Attachments"></div>
+          <label class="visually-hidden" for="input">Message</label>
+          <textarea id="input" rows="1" placeholder="Follow the thought…" aria-describedby="composer-legend hint" spellcheck="true"></textarea>
+          <div class="composer-legend" id="composer-legend"><span>@ files</span><span>$ skills</span><span>/ commands</span><span>Drop images or documents</span></div>
+          <div class="bar">
+            <span class="hint" id="hint"><kbd>Ctrl Enter</kbd> sends<span class="alt"> · <kbd>Enter</kbd> adds a line</span></span>
+            <button class="btn quiet sources" id="sources" type="button" data-popup="dialog"
+                    aria-expanded="false" aria-controls="sources-panel" aria-keyshortcuts="Control+Comma"
+                    title="Sources and citation rigor (Ctrl ,)">
+              <svg aria-hidden="true"><use href="#i-sources"/></svg>
+              <span class="sources-label">Sources</span> <span id="sources-value"></span>
+            </button>
+            <button class="btn quiet effort" id="effort" type="button" aria-keyshortcuts="Shift+Tab" data-level="default" disabled>
+              <span class="effort-meter" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+              <span class="effort-label">Reasoning</span> <span id="effort-value">Default</span>
+            </button>
+            <button class="btn quiet icon-btn" id="attach" type="button" aria-label="Attach an image or document">
+              <svg aria-hidden="true"><use href="#i-attach"/></svg>
+            </button>
+            <button class="btn quiet retry" id="retry" type="button" disabled
+                    title="Resend the latest prompt as a new turn (Ctrl R)">Retry</button>
+            <button class="btn primary send" id="send" type="submit">Send</button>
+          </div>
+        </form>
+        <div class="chat-metrics" aria-label="Chat usage">
+          <span class="context-metric" id="context-metric">
+            <span class="context-track" aria-hidden="true"><span id="context-fill"></span></span>
+            <span id="context-value">Context — / —</span>
+          </span>
+          <span id="generation-speed">— tokens/s</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <ul class="popover" id="commands" role="listbox" aria-label="Commands" hidden></ul>
+
+  <!-- What the next reply may draw on, and how hard its claims are checked. -->
+  <div class="sources-panel" id="sources-panel" role="dialog" aria-label="Chat settings" hidden>
+    <h2 class="sources-heading" id="sources-heading">Sources</h2>
+    <div class="sources-group" role="group" aria-labelledby="sources-heading">
+      <button class="row-control" id="knowledge-toggle" type="button" role="switch" aria-checked="true">
+        <span>Local knowledge</span><span class="switch" aria-hidden="true"></span>
+      </button>
+      <button class="row-control" id="web-toggle" type="button" role="switch" aria-checked="true">
+        <span>Web search</span><span class="switch" aria-hidden="true"></span>
+      </button>
+      <button class="row-control sources-sub" id="trusted-button" type="button" data-popup="dialog">
+        <span>Trusted sites</span><span class="value">Manage ›</span>
+      </button>
+      <button class="row-control" id="memory-toggle" type="button" role="switch" aria-checked="false">
+        <span>Memory</span><span class="switch" aria-hidden="true"></span>
+      </button>
+    </div>
+    <h2 class="sources-heading" id="rigor-heading">Citation rigor</h2>
+    <div class="rigor-modes" id="citation-rigor" role="radiogroup" aria-labelledby="rigor-heading" aria-describedby="rigor-detail">
+      <button type="button" role="radio" data-mode="off" aria-checked="true">Off</button>
+      <button type="button" role="radio" data-mode="advisory" aria-checked="false" tabindex="-1">Advisory</button>
+      <button type="button" role="radio" data-mode="balanced" aria-checked="false" tabindex="-1">Balanced</button>
+      <button type="button" role="radio" data-mode="strict" aria-checked="false" tabindex="-1">Strict</button>
+    </div>
+    <p class="rigor-detail" id="rigor-detail"></p>
+  </div>
+
+  <div class="scrim" id="scrim" hidden>
+    <div class="dialog" id="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" hidden>
+      <h2 id="dialog-title"></h2>
+      <div class="detail" id="dialog-detail"></div>
+      <div class="actions" id="dialog-actions"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="visually-hidden" id="reply-announcement" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="animations.js"></script>
+  <script src="motion-canvas-player.js"></script>
+  <script src="ui-runtime.js"></script>
+  <script src="diagrams.js"></script>
+  <script src="bloom.js"></script>
+</body>
+</html>

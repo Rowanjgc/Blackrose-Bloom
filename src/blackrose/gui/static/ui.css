@@ -1,0 +1,43 @@
+.blackrose-ui { container: answer / inline-size; margin: 1.4rem 0; padding: 1.2rem 0; border-block: 1px solid var(--gb-edge-decorative); color: var(--gb-text); font-size: 1rem; }
+.blackrose-ui h3 { margin: 0 0 1.1rem; font-size: 1.25rem; }
+.blackrose-ui h4 { margin: .8rem 0; }
+.blackrose-ui .ui-text { white-space: pre-wrap; }
+.blackrose-ui :is(input, select, button) { font: inherit; color: var(--gb-text); background: var(--gb-surface-raised); border: 1px solid var(--gb-edge-control); border-radius: 5px; min-height: 2.75rem; padding: .45rem .75rem; max-width: 100%; }
+.blackrose-ui :is(input, select):not([type=checkbox], [type=radio]) { width: 100%; min-width: 0; }
+.blackrose-ui :is(input[type=checkbox], input[type=radio]) { width: 1.2rem; height: 1.2rem; min-height: 0; accent-color: var(--gb-action); }
+.blackrose-ui button { cursor: pointer; }
+.blackrose-ui button[type=submit] { background: var(--gb-action); color: var(--gb-on-action); border-color: var(--gb-action); }
+.blackrose-ui button:disabled { opacity: .55; cursor: default; }
+.blackrose-ui :is(input,select,button,summary,[tabindex]):focus-visible { outline: 2px solid var(--gb-focus); outline-offset: 3px; }
+.blackrose-ui .ui-field { display: grid; gap: .4rem; margin-block: .9rem; max-width: 36rem; }
+.blackrose-ui .ui-toolbar { display: flex; flex-wrap: wrap; gap: .8rem; align-items: end; margin-bottom: 1rem; }
+.blackrose-ui .ui-toolbar label { display: grid; gap: .4rem; flex: 1 1 10rem; }
+.blackrose-ui .ui-table-scroll { min-width: 0; max-width: 100%; overflow-x: auto; }
+/* Override transcript prose tables: the focusable region owns overflow. */
+.blackrose-ui table { display: table; border-collapse: collapse; width: 100%; max-width: none; overflow: visible; font-variant-numeric: tabular-nums; }
+.blackrose-ui :is(th,td) { padding: .65rem .8rem; border-bottom: 1px solid var(--gb-edge-decorative); text-align: left; overflow-wrap: anywhere; min-width: 6rem; }
+.blackrose-ui th { color: var(--gb-text-secondary); font-weight: 400; }
+.blackrose-ui input.ui-quantity { width: 8rem; }
+.blackrose-ui .ui-scaled-quantity { display: block; }
+.blackrose-ui .ui-hint { font-size: .85rem; color: var(--gb-text-secondary); margin-block: .65rem; }
+.blackrose-ui .ui-total { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .4rem 1rem; font-size: 1.15rem; font-variant-numeric: tabular-nums; margin-block: 1rem; }
+.blackrose-ui .ui-total > * { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.blackrose-ui .ui-total output { margin-inline-start: auto; text-align: end; }
+.blackrose-ui .ui-bars { list-style: none; padding: 0; }
+.blackrose-ui .ui-bars li { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,2fr) minmax(0,1fr); align-items: center; gap: .8rem; padding-block: .4rem; font-variant-numeric: tabular-nums; }
+.blackrose-ui .ui-bars li > span { min-width: 0; overflow-wrap: anywhere; }
+.blackrose-ui .ui-bars li > span:last-child { text-align: end; }
+.blackrose-ui .ui-bar-track { position: relative; height: .65rem; margin-inline: 1px; background: var(--gb-surface-hover); }
+.blackrose-ui .ui-bar-track::before { content: ''; position: absolute; left: var(--ui-zero); top: -.2rem; bottom: -.2rem; width: 1px; background: var(--gb-text-secondary); }
+.blackrose-ui .ui-bar-track span { position: absolute; display: block; height: 100%; background: var(--gb-brand); }
+.blackrose-ui .ui-bar-track[data-sign=zero]::after { content: ''; position: absolute; left: var(--ui-zero); top: 50%; width: .4rem; height: .4rem; border-radius: 50%; background: var(--gb-text); transform: translate(-50%, -50%); }
+/* Use the answer's available width, including enlarged text and wide sidebars. */
+@container answer (max-width: 28rem) {
+  .blackrose-ui .ui-bars li { grid-template-columns: minmax(0,1fr); gap: .3rem; padding-block: .8rem; }
+  .blackrose-ui .ui-bars li > span:last-child { grid-row: 2; }
+  .blackrose-ui .ui-bar-track { grid-row: 3; }
+}
+.blackrose-ui .ui-error { color: var(--gb-error); }
+.blackrose-ui .ui-fallback { margin-top: 1rem; font-size: .85rem; color: var(--gb-text-secondary); }
+.blackrose-ui summary { cursor: pointer; padding-block: .4rem; }
+.blackrose-ui pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; font-family: inherit; }

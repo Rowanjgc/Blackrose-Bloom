@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- Separate file navigation gives the sandbox its own CSP. A srcdoc in the
+     desktop page would also inherit that page's ban on inline scripts. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<script>
+(() => {
+  const receive = event => {
+    if (event.source !== parent || event.data?.channel !== 'blackrose-motion-control'
+        || event.data.command !== 'initialize' || typeof event.data.value !== 'string') return;
+    window.removeEventListener('message', receive);
+    document.open(); document.write(event.data.value); document.close();
+  };
+  window.addEventListener('message', receive);
+  parent.postMessage({channel: 'blackrose-motion', type: 'host-ready'}, '*');
+})();
+</script>

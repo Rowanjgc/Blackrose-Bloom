@@ -1,0 +1,31 @@
+{
+  "block_id": "historical_form_0001",
+  "message_id": 12,
+  "conversation_id": 7,
+  "position": 0,
+  "kind": "interactive_ui",
+  "protocol_version": 1,
+  "library_version": "blackrose-semantic/1",
+  "schema_hash": "b2136b8b63a3ab2903b6d732e982624f0175918817cdc0a5e6f04c01f330bf3b",
+  "source_revision": 1,
+  "source_sequence": 1,
+  "source": "{\"type\":\"form\",\"title\":\"Saved reading preferences\",\"fields\":[{\"id\":\"days\",\"label\":\"Days per week\",\"kind\":\"number\",\"minimum\":1,\"maximum\":7,\"required\":true}],\"submit_label\":\"Use preferences\"}",
+  "source_hash": "2bb166535cafd49582d087b98b42bbf98d82326bc9638533fffca3e54550cdd0",
+  "status": "ready",
+  "fallback_text": "Saved reading preferences\nDays per week: number",
+  "document": {
+    "type": "form",
+    "title": "Saved reading preferences",
+    "fields": [
+      {
+        "id": "days",
+        "label": "Days per week",
+        "kind": "number",
+        "minimum": 1,
+        "maximum": 7,
+        "required": true
+      }
+    ],
+    "submit_label": "Use preferences"
+  }
+}

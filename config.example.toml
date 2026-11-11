@@ -1,0 +1,80 @@
+endpoint = "http://127.0.0.1:18080"
+default_model = "qwen36-35b-a3b"
+# Optional replacement for the built-in system instructions; omit to use the default.
+# system_prompt = "You are a concise, careful assistant."
+# Alternatively, select Go in Models or use e.g. "opencode-go/glm-5.3".
+# Store its key securely with: blackrose opencode-go-key set
+web_enabled = true
+knowledge_enabled = true
+# Optional source-based claim auditing; adds model requests only when enabled.
+citation_rigor = "off" # off / advisory / balanced / strict
+image_generation_enabled = true
+# Image provider: "" (automatic: local when available, else off), "local", "openrouter" or "off".
+# Chosen independently of the chat model. Paid OpenRouter images still ask before sending.
+image_provider = ""
+image_model = "bytedance-seed/seedream-5-0-pro"
+openrouter_image_models = ["bytedance-seed/seedream-5-0-pro"]
+local_image_enabled = true
+local_image_keep_chat_loaded = true
+local_image_endpoint = "http://127.0.0.1:8189"
+local_image_workflows = "~/.config/blackrose-bloom/image-workflows"
+# Optional memory across conversations in a local Honcho; see docs/memory.md.
+memory_enabled = false
+memory_endpoint = "http://127.0.0.1:8765"
+# Honcho peer that stands for you (letters, digits, "_" or "-").
+memory_peer = "user"
+# Store the API key securely with: blackrose openrouter-key set
+searxng_url = "http://127.0.0.1:10017"
+# Sites the assistant may read over HTTPS without asking, including addresses it
+# writes; in chats that used local data, only addresses without a query. One host
+# or "*." and a domain. IP addresses, public suffixes and hosts where anyone can
+# publish or read requests (github.io, raw.githubusercontent.com, unpkg.com,
+# cdn.jsdelivr.net, pastebins, URL shorteners) are refused. Edit in Trusted sites.
+trusted_hosts = ["docs.python.org", "peps.python.org", "developer.mozilla.org", "www.rfc-editor.org",
+                 "datatracker.ietf.org", "man7.org", "docs.gtk.org"]
+knowledge_config = "~/.config/local-knowledge/config.toml"
+request_timeout = 600
+# Host-side ceilings for model replies; the total duration is independent of
+# request_timeout (which limits idle time between response bytes).
+stream_reply_bytes = 16777216
+stream_reasoning_bytes = 8388608
+stream_response_bytes = 67108864
+stream_sse_line_bytes = 1048576
+stream_duration_seconds = 1800
+max_tool_rounds = 8
+# Experimental plan-first Motion Canvas authoring; direct generation stays available.
+motion_plan_first = false
+# Review adds selected-model image inference; repair requires review and makes
+# at most one source correction per animation.
+motion_visual_review = false
+motion_visual_repair = false
+# False for a shared router managed elsewhere (for example by systemd): Blackrose then neither
+# starts nor stops the router, and does not unload a model when it exits.
+router_autostart = true
+llama_server_path = "~/.local/bin/llama-server"
+router_preset = "~/.config/llama-router/models.ini"
+router_start_timeout = 30
+router_stop_timeout = 60
+# Launched routers get a fresh key per launch. For a router you manage, start it
+# with --api-key-file and name the same 0600 file here (empty: generated key).
+router_api_key_file = ""
+# Tuning lives in llama-router presets. The app supplies no sampling, context,
+# template, GPU, cache, or token-limit overrides. Reasoning is overridden only
+# when you pick a reasoning effort other than Default (Shift+Tab in the composer).
+# Experimental interactive answers. Replay works even with these disabled.
+interactive_ui_enabled = false
+interactive_ui_actions_enabled = false
+# Bounded in-place repair attempts per reply (0 disables). Invalid blocks are
+# corrected silently and replaced; the repair never becomes a visible turn.
+interactive_ui_repairs = 1
+# Failed Mermaid syntax gets at most this many source-only repairs per answer
+# (0 disables, maximum 2). Each failed diagram is attempted once across reloads.
+diagram_repairs = 1
+
+# Thinking-token ceilings for reasoning effort Low..XHigh on local thinking
+# templates. Keep this table last in the file.
+# [reasoning_budgets]
+# low = 1024
+# medium = 4096
+# high = 16384
+# xhigh = 32768

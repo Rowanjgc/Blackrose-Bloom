@@ -1,0 +1,123 @@
+{
+  "provenance": "2026-10-30 authorized OpenCode Go gpt-6-luna low-effort run; observed structural metadata, not raw SSE; tests supply synthetic field values",
+  "wire_structure": [
+    {
+      "protocol": "responses",
+      "events": [
+        {
+          "event": "response.created",
+          "item_types": []
+        },
+        {
+          "event": "response.in_progress",
+          "item_types": []
+        },
+        {
+          "event": "response.output_item.added",
+          "item_types": [
+            "function_call"
+          ]
+        },
+        {
+          "event": "response.function_call_arguments.delta",
+          "item_types": []
+        },
+        {
+          "event": "response.function_call_arguments.delta",
+          "item_types": []
+        },
+        {
+          "event": "response.function_call_arguments.delta",
+          "item_types": []
+        },
+        {
+          "event": "response.function_call_arguments.delta",
+          "item_types": []
+        },
+        {
+          "event": "response.function_call_arguments.delta",
+          "item_types": []
+        },
+        {
+          "event": "response.function_call_arguments.delta",
+          "item_types": []
+        },
+        {
+          "event": "response.function_call_arguments.done",
+          "item_types": []
+        },
+        {
+          "event": "response.output_item.done",
+          "item_types": [
+            "function_call"
+          ]
+        },
+        {
+          "event": "response.completed",
+          "item_types": [
+            "function_call"
+          ]
+        }
+      ],
+      "reasoning_seen_on_wire": false
+    },
+    {
+      "protocol": "responses",
+      "events": [
+        {
+          "event": "response.created",
+          "item_types": []
+        },
+        {
+          "event": "response.in_progress",
+          "item_types": []
+        },
+        {
+          "event": "response.output_item.added",
+          "item_types": [
+            "message"
+          ]
+        },
+        {
+          "event": "response.content_part.added",
+          "item_types": []
+        },
+        {
+          "event": "response.output_text.delta",
+          "item_types": []
+        },
+        {
+          "event": "response.output_text.done",
+          "item_types": []
+        },
+        {
+          "event": "response.content_part.done",
+          "item_types": []
+        },
+        {
+          "event": "response.output_item.done",
+          "item_types": [
+            "message"
+          ]
+        },
+        {
+          "event": "response.completed",
+          "item_types": [
+            "message"
+          ]
+        }
+      ],
+      "reasoning_seen_on_wire": false
+    }
+  ],
+  "normalized_usage": [
+    {
+      "prompt_tokens": 164,
+      "completion_tokens": 19
+    },
+    {
+      "prompt_tokens": 167,
+      "completion_tokens": 5
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "blackrose-development",
+  "private": true,
+  "scripts": {
+    "test:browser": "node scripts/check_reading_room.cjs && node scripts/check_gui_models.cjs && node scripts/check_gui_toolbar_scale.cjs && node scripts/check_answer_layout.cjs && node scripts/check_interactive_ui.cjs && node scripts/check_citations.cjs && node scripts/check_sources_popover.cjs && node scripts/check_help_sheet.cjs && node scripts/check_effort.cjs && node scripts/check_conversation_paging.cjs && node scripts/check_edit_review.cjs && node scripts/check_history_paging.cjs && node scripts/check_chat_navigation.cjs && node scripts/check_diagrams.cjs"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
+}
