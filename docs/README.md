@@ -37,6 +37,7 @@
 | [Dependency and CI maintenance](dependency-maintenance.md) | Manual monthly review, advisory disposition, action pins and trial-update checks |
 | [Design language](../GOTHIC_BLOOM_DESIGN_LANGUAGE.md) | Canonical Gothic Bloom design reference |
 | [Design studies](design-previews/README.md) | Three static design directions and review screenshots |
+| [Scripts](../scripts/README.md) | Every development check, probe, measurement and tool, by what running it costs |
 
 ## Preserved reviews and evidence
 

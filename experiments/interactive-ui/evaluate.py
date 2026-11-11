@@ -164,7 +164,7 @@ async def run(args):
                                       'model': args.model, 'metrics': [], 'first_accepted_block_seconds': None}
                             started = time.perf_counter()
                             captured.clear()
-                            def ui(blocks):
+                            def ui(blocks, record=record, started=started):
                                 if record['first_accepted_block_seconds'] is None and any(b.get('document') for b in blocks):
                                     record['first_accepted_block_seconds'] = time.perf_counter()-started
                             try:
