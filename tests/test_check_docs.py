@@ -1,4 +1,4 @@
-"""The documentation check reports each kind of stale reference and holds its baseline."""
+"""The documentation check reports each kind of stale reference."""
 import importlib.util
 from pathlib import Path
 import tempfile
@@ -27,9 +27,9 @@ class DocumentationCheckTests(unittest.TestCase):
     def tearDown(self):
         self.directory.cleanup()
 
-    def problems(self, text, baseline=None):
+    def problems(self, text):
         (self.root / 'docs/page.md').write_text(text)
-        return check_docs.check(self.root, ['docs/page.md'], baseline or {}, ignored=never_ignored)
+        return check_docs.check(self.root, ['docs/page.md'], ignored=never_ignored)
 
     def test_valid_links_paths_and_test_references_pass(self):
         self.assertEqual(self.problems(
@@ -46,7 +46,7 @@ class DocumentationCheckTests(unittest.TestCase):
     def test_missing_backticked_path_is_reported_unless_git_ignores_it(self):
         self.assertIn('missing path `tests/gone.py`', self.problems('`tests/gone.py`\n')[0])
         (self.root / 'docs/page.md').write_text('`src/generated.js`\n')
-        self.assertEqual(check_docs.check(self.root, ['docs/page.md'], {},
+        self.assertEqual(check_docs.check(self.root, ['docs/page.md'],
                                           ignored=lambda _root, _path: True), [])
 
     def test_every_dotted_part_of_a_reference_must_be_defined(self):
@@ -59,16 +59,11 @@ class DocumentationCheckTests(unittest.TestCase):
         self.assertEqual(len(problems), 1)
         self.assertIn('names nothing defined', problems[0])
 
-    def test_new_line_number_reference_fails_without_a_baseline(self):
-        problems = self.problems('See `tests/test_thing.py:2`.\n')
-        self.assertEqual(len(problems), 1)
-        self.assertIn('1 line-number references (allowed 0)', problems[0])
-
-    def test_baseline_allows_existing_references_and_only_shrinks(self):
-        text = 'a.py:1 and b.js:20\n'
-        self.assertEqual(self.problems(text, {'docs/page.md': 2}), [])
-        self.assertIn('allowed 2', self.problems(text + 'c.py:3\n', {'docs/page.md': 2})[0])
-        self.assertIn('below the baseline of 2', self.problems('a.py:1\n', {'docs/page.md': 2})[0])
+    def test_every_line_number_reference_is_reported_with_its_location(self):
+        problems = self.problems('See `tests/test_thing.py:2`.\n\nAnd a.py:1 or b.js:20-24.\n')
+        self.assertEqual(len(problems), 3)
+        self.assertTrue(problems[0].startswith('docs/page.md:1: line-number reference tests/test_thing.py:2'))
+        self.assertTrue(problems[2].startswith('docs/page.md:3: line-number reference b.js:20'))
 
     def test_host_and_port_are_not_line_references(self):
         self.assertEqual(self.problems('Serve on localhost:8080 or 127.0.0.1:9000.\n'), [])
