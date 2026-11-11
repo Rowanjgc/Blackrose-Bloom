@@ -78,14 +78,22 @@ def anchors(path):
 
 
 def defines(path, name):
-    """Whether the file defines ``name`` (the last dotted part; ``…`` elides a class)."""
-    leaf = name.replace('…', '').split('.')[-1]
-    if not leaf:
-        return True
-    name_pattern = re.escape(leaf)
-    pattern = re.compile(rf'^\s*(?:async\s+def|def|class|function)\s+{name_pattern}\b'
-                         rf'|\b{name_pattern}\s*[(=]', re.MULTILINE)
-    return bool(pattern.search(path.read_text(encoding='utf-8', errors='replace')))
+    """Whether the file defines every dotted part of ``name`` (``…`` elides a prefix).
+
+    ``ChatController.stop`` needs both a ``ChatController`` and a ``stop``
+    definition, so renaming either one is reported. Attributes count when
+    assigned (``name =``); JavaScript methods when declared (``name(``).
+    """
+    text = path.read_text(encoding='utf-8', errors='replace')
+    for part in name.replace('…', '').split('.'):
+        if not part:
+            continue
+        escaped = re.escape(part)
+        pattern = re.compile(rf'^\s*(?:async\s+def|def|class|function|async\s+function)\s+{escaped}\b'
+                             rf'|\b{escaped}\s*[(=:]', re.MULTILINE)
+        if not pattern.search(text):
+            return False
+    return True
 
 
 def is_ignored(root, relative):
@@ -126,7 +134,8 @@ def check_file(root, relative, *, ignored=is_ignored):
                 name = names.split('::')[-1]
                 # Docs often cite a test or module relative to its home directory.
                 candidates = [root / base / file_name
-                              for base in ('.', 'tests', 'scripts', 'src/blackrose', 'src')]
+                              for base in ('.', 'tests', 'scripts', 'src/blackrose', 'src',
+                                           'src/blackrose/gui/static')]
                 existing = next((c for c in candidates if c.is_file()), None)
                 if existing is None:
                     problems.append(f'{where}: reference to missing file `{span}`')
