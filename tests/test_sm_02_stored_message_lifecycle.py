@@ -322,9 +322,9 @@ class MessageLifecycleTests(unittest.IsolatedAsyncioTestCase):
         """The repository, unlike checkpoint_content/save_audit, has no settle guard.
 
         No product path reaches this: TurnRunner settles only while ``completed``
-        is unset (turns.py:358-365) and ``reap_pending`` filters on ``pending``.
+        is unset (``TurnRunner._run``) and ``reap_pending`` filters on ``pending``.
         The specification proposes adding ``AND role='assistant' AND state='pending'``
-        to repository.py:791-794; invert this test when that lands.
+        to ``Repository.finish_message``; invert this test when that lands.
         """
         user, reply = await self.repo.begin_turn(self.conversation.id, "request", "model-a")
         await self.repo.finish_message(reply.id, "answer", MessageState.COMPLETE)

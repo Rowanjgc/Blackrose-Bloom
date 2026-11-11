@@ -196,7 +196,7 @@ class TurnOrchestrationTests(unittest.IsolatedAsyncioTestCase):
         ``TurnRunner.run`` clears ``last_request_stored`` beside
         ``last_completed_turn`` before ``ensure_conversation`` and the keyed
         credential lookup, so a Stop during either cannot inherit the previous
-        turn's ``True`` (gui/session.py:1452, 1469, 1520).  The refusal guard
+        turn's ``True``.  The refusal guard
         moved up with it: a ``ChatBusy``-refused send must not clear the live
         turn's flag.
         """

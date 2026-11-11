@@ -31,7 +31,7 @@ from blackrose.turns import TurnRunner
 from blackrose.ui_documents import LIBRARY, UIEnvelope, UIStream, apply_repair, contract
 
 # A line that starts like a semantic block and fails the contract: it is created
-# as an interactive block with status 'invalid' and no document (ui_documents.py:394-399).
+# as an interactive block with status 'invalid' and no document (UIStream._line).
 BAD = '{"type":"form","title":"Incomplete"}'
 
 _FORM: str | None = None
@@ -425,7 +425,7 @@ class RepairInterruptionTests(_RepositoryCase):
         stream = UIStream(self.assistant)
         stream.begin('form')
         stream.append(BAD + '\n' + form_source() + '\n')
-        # Persist the round mid-flight, as the streaming save does (turns.py:643-644).
+        # Persist the round mid-flight, as the streaming save in TurnRunner._stream_round does.
         await self.repo.save_blocks(self.assistant.id, stream.blocks)
         self.assertEqual([b['status'] for b in await self.stored_blocks()],
                          ['invalid', 'streaming'])

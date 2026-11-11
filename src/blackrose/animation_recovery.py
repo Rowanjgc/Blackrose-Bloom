@@ -85,7 +85,7 @@ class AnimationRecovery:
                     (status, replacement_id, conversation_id, attachment_id))
         async def write():
             # The lock is also the writer exclusion that lets a read-only
-            # artifact report open the ledger with immutable=1 (snapshot.py:11).
+            # artifact report open the ledger with immutable=1 (storage.snapshot.readonly_snapshot).
             async with self._lock:
                 await run_to_completion(finish)
         operation = asyncio.create_task(write())
