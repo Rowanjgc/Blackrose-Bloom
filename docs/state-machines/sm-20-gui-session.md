@@ -495,8 +495,9 @@ Owned by `src/blackrose/gui/session.py::Session.submit` (directory approval bran
   `src/blackrose/gui/session.py::Session.retry`.** Resolved:
   `src/blackrose/gui/session.py::Session.submit` and
   `src/blackrose/gui/session.py::Session.retry` now include `_quit_requested` in
-  their admission guards. No test pins the refusal of these two paths yet; the
-  slot waiter's equivalent is pinned by
+  their admission guards, pinned by
+  `tests/test_sm_20_gui_session.py::GenerationSlotTests.test_submit_and_retry_refuse_once_quit_is_requested`;
+  the slot waiter's equivalent is pinned by
   `tests/test_sm_20_gui_session.py::GenerationSlotPlannerTests.test_refusals_never_take_or_clobber_the_slot`.
   As found: `submit` and `retry` did not check
   `_quit_requested`, although `ui_action`, both repair intakes and the slot waiter do
@@ -611,7 +612,9 @@ a narrower guarantee.
 asserts the refusal inside the window. `tests/test_composer_drafts.py` and
 `tests/test_session_lifecycle.py` submit only with an owner installed, so the guard
 does not affect them. The `_quit_requested` term in the same guard, and in
-`src/blackrose/gui/session.py::Session.retry`, is the H4 fix.
+`src/blackrose/gui/session.py::Session.retry`, is the H4 fix;
+`tests/test_sm_20_gui_session.py::GenerationSlotTests.test_submit_and_retry_refuse_once_quit_is_requested`
+asserts both refusals.
 
 ## Verification
 
