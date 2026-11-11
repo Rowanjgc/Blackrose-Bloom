@@ -541,9 +541,8 @@ git diff --check
 ```
 
 Both regression tests were confirmed to fail against the `HEAD` versions of the
-two modules (`Ran 16 tests … FAILED (failures=2)`) and pass with the change. There
-is no `tests/test_service.py`; the router service is covered by
-`test_router_service.py` plus the probes above. The full offline gate
+two modules (`Ran 16 tests … FAILED (failures=2)`) and pass with the change. The
+router service is covered by `test_router_service.py` plus the probes above. The full offline gate
 (`scripts/check_health.py`) was not run because other beads' uncommitted changes
 are present in this working tree (their files, not this bead's); the focused set
 above is green.

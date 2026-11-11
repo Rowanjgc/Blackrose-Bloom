@@ -357,8 +357,7 @@ Offline, from the repository root:
 # OK (includes the process-kill crash probe)
 ```
 
-There is no `tests/test_interactive_answers.py` in this checkout; the
-pre-existing coverage for `InteractiveAnswers` lives in
+The pre-existing coverage for `InteractiveAnswers` lives in
 `tests/test_ui_documents.py` (cancellation during acceptance, reload during
 acceptance, startup reaping, stale/tampered/cross-conversation refusal) and is
 listed above.
