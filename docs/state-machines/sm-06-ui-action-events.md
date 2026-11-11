@@ -17,7 +17,7 @@
   `src/blackrose/turns.py::TurnRunner._prepare` and `src/blackrose/turns.py::TurnRunner._begin_turn`,
   `src/blackrose/chat.py::ChatController.recover_interrupted`,
   `src/blackrose/artifacts.py::settle`, `src/blackrose/storage/db.py::Database.run`
-  and `src/blackrose/storage/db.py::_worker`.
+  and `src/blackrose/storage/db.py::run_to_completion`.
 
 Ownership, per [architecture](../architecture.md#modules-and-invariants) and
 [ADR 0003](../adr/0003-interactive-answer-ownership.md):
@@ -35,7 +35,7 @@ Ownership, per [architecture](../architecture.md#modules-and-invariants) and
 - **`Repository`** owns atomicity. All writes go through `Database.run`, which
   holds one `asyncio.Lock` around one worker thread
   (`src/blackrose/storage/db.py::Database.run`) and rolls back a failed callback;
-  `src/blackrose/storage/db.py::_worker` waits for the thread even after the
+  `src/blackrose/storage/db.py::run_to_completion` waits for the thread even after the
   caller is cancelled. One desktop owns the database (ADR 0001), so there is
   exactly one writer process.
 - **`TurnRunner`** owns the turn: it reads the event's context while it is still
@@ -170,9 +170,9 @@ repository does not (H2).
 8. **A rotated view cannot start a turn.** The post-acceptance re-check
    in `src/blackrose/gui/session.py::Session.ui_action` settles `interrupted` and creates no task. Pinned by
    `test_view_rotation_between_acceptance_and_turn_start_settles_interrupted`.
-9. **Settlement reaches a started row after cancellation.** `Database._worker`
+9. **Settlement reaches a started row after cancellation.** `run_to_completion`
    finishes the write before it re-raises `CancelledError`
-   (`src/blackrose/storage/db.py::_worker`), so a
+   (`src/blackrose/storage/db.py::run_to_completion`), so a
    Stop between `begin_turn` and `finish` still records `cancelled` against the
    consumed row. Pinned by
    `test_turn_cancelled_after_consumption_settles_the_event`.
@@ -257,7 +257,7 @@ repository does not (H2).
   `test_reap_during_a_live_turn_flips_a_started_row_and_settlement_overwrites_it`.
   A `started_at` column or an owner token would make the two distinguishable.
 - **H6 — `fragile` — `src/blackrose/storage/db.py::Database.run`.** The cancellation-safe write
-  guarantee starts when `_worker` owns the operation. A cancellation delivered
+  guarantee starts when `run_to_completion` owns the operation. A cancellation delivered
   while `Database.run` is still waiting on `Database._lock` (its
   `async with self._lock`) drops the
   settlement entirely, so a *second* cancellation landing inside `_send`'s

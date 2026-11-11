@@ -15,7 +15,7 @@ import sqlite3
 
 from .errors import ChatBusy
 from .instance import DesktopOwnership
-from .storage.db import _worker
+from .storage.db import run_to_completion
 from .storage.snapshot import readonly_snapshot
 
 _BLOB = re.compile(r'([0-9a-f]{2})/([0-9a-f]{2})/([0-9a-f]{64})(\.[^/\x00]+)?')
@@ -72,21 +72,6 @@ def recovery_path(store):
     for suffix in ('', '-wal', '-shm', '-journal'):
         owned_path(store, name + suffix)
     return store.root / name
-
-
-def inventory(connection):
-    """Read all ownership columns in one SQLite snapshot; also supports schema 1–3."""
-    with connection:
-        connection.execute('BEGIN')
-        conversations = {row[0] for row in connection.execute('SELECT id FROM conversations')}
-        references = {row[0] for row in connection.execute('''
-            SELECT storage_path FROM message_attachments
-            UNION SELECT text_path FROM message_attachments WHERE text_path IS NOT NULL''')}
-        has_queue = connection.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifact_cleanup'").fetchone()
-        pending = [dict(zip(('kind', 'target', 'error'), row, strict=True)) for row in connection.execute(
-            'SELECT kind, target, error FROM artifact_cleanup ORDER BY kind, target')] if has_queue else []
-    return conversations, references, pending
 
 
 def reconciliation(store, snapshot):
@@ -178,16 +163,16 @@ class ArtifactLifecycle:
             yield
 
     async def report(self):
-        snapshot = await self.repo._db.run(inventory)
+        snapshot = await self.repo.ownership_inventory()
         async with self.recovery._lock:
-            return await _worker(lambda: reconciliation(self.store, snapshot))
+            return await run_to_completion(lambda: reconciliation(self.store, snapshot))
 
     async def retry(self):
         """Drain recorded obligations. Caller holds exclusive until workers settle."""
         completed, preserved = [], []
         if not await self.repo.cleanup_jobs():
             return {'completed': completed, 'preserved': preserved, 'pending': []}
-        _, references, jobs = await self.repo._db.run(inventory)
+        _, references, jobs = await self.repo.ownership_inventory()
         # Include canonical aliases from damaged rows: they still own their bytes.
         # The snapshot covers both columns, under the same writer exclusion.
         protected = set(references)
@@ -208,7 +193,7 @@ class ArtifactLifecycle:
                         raise ValueError('Unrecognized blob layout; manual inspection required.')
                     else:
                         owned_path(self.store, target)
-                        if not await _worker(lambda target=target: self.store.delete(target)):
+                        if not await run_to_completion(lambda target=target: self.store.delete(target)):
                             raise OSError('Attachment deletion failed; retry required.')
                         completed.append(job)
                 else:
@@ -219,7 +204,7 @@ class ArtifactLifecycle:
                         preserved.append(job)
                     elif kind == 'drafts':
                         from .illustrations import delete_conversation_drafts
-                        await _worker(lambda conversation_id=conversation_id: delete_conversation_drafts(
+                        await run_to_completion(lambda conversation_id=conversation_id: delete_conversation_drafts(
                             self.store.root, conversation_id))
                         completed.append(job)
                     elif kind == 'recovery':
@@ -236,7 +221,7 @@ class ArtifactLifecycle:
     async def repair(self, ownership):
         if not isinstance(ownership, DesktopOwnership):
             raise RuntimeError('Artifact repair requires desktop ownership.')
-        ownership.require(self.repo._db.path)
+        ownership.require(self.repo.database_path)
         report = await self.report()
         jobs = [('blob', path) for path in report['blobs']['unreferenced']]
         jobs += [('partial', path) for path in report['partials']]

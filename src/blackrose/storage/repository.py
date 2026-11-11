@@ -270,9 +270,37 @@ def _insert_message(conn: sqlite3.Connection, conversation_id: int, role: str,
     return message_id
 
 
+def read_ownership_inventory(connection: sqlite3.Connection) -> tuple[set[int], set[str], list[dict[str, Any]]]:
+    """Read all ownership columns in one SQLite snapshot; also supports schema 1–3.
+
+    Shared by ``Repository.ownership_inventory`` and the offline read-only
+    ``artifact_cli`` report, which opens its own snapshot connection.
+    """
+    with connection:
+        connection.execute('BEGIN')
+        conversations = {row[0] for row in connection.execute('SELECT id FROM conversations')}
+        references = {row[0] for row in connection.execute('''
+            SELECT storage_path FROM message_attachments
+            UNION SELECT text_path FROM message_attachments WHERE text_path IS NOT NULL''')}
+        has_queue = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifact_cleanup'").fetchone()
+        pending = [dict(zip(('kind', 'target', 'error'), row, strict=True)) for row in connection.execute(
+            'SELECT kind, target, error FROM artifact_cleanup ORDER BY kind, target')] if has_queue else []
+    return conversations, references, pending
+
+
 class Repository:
     def __init__(self, db: Database) -> None:
         self._db = db
+
+    @property
+    def database_path(self):
+        """The chat database file, for ownership checks."""
+        return self._db.path
+
+    async def ownership_inventory(self) -> tuple[set[int], set[str], list[dict[str, Any]]]:
+        """Conversations, referenced blobs and cleanup obligations in one snapshot."""
+        return await self._db.run(read_ownership_inventory)
 
     # --- conversations ------------------------------------------------------
 
@@ -613,6 +641,54 @@ class Repository:
             with conn:
                 conn.execute('DELETE FROM edit_backups WHERE id=?', (backup_id,))
         await self._db.run(delete)
+
+    # --- composer drafts ----------------------------------------------------
+    # drafts.ComposerDrafts bounds and encodes the values; these methods own the rows.
+
+    async def save_composer_draft(self, conversation_id: int, *, text: str, refs: str,
+                                  attachments: str, sending: str | None, updated_at: str,
+                                  files: dict[str, bytes]) -> bool:
+        """Replace a draft and its attachment copies. False once the conversation is deleted."""
+        def save(conn: sqlite3.Connection) -> bool:
+            with conn:
+                # An upsert, never REPLACE: replacing the row would cascade away
+                # its files. Selecting the owner refuses a deleted conversation.
+                inserted = conn.execute(
+                    'INSERT INTO composer_drafts(conversation_id, text, refs, attachments, sending, updated_at) '
+                    'SELECT id, ?, ?, ?, ?, ? FROM conversations WHERE id=? '
+                    'ON CONFLICT(conversation_id) DO UPDATE SET text=excluded.text, refs=excluded.refs, '
+                    'attachments=excluded.attachments, sending=excluded.sending, '
+                    'updated_at=excluded.updated_at',
+                    (text, refs, attachments, sending, updated_at, conversation_id)).rowcount
+                if not inserted:
+                    return False
+                stored = {r[0] for r in conn.execute(
+                    'SELECT digest FROM composer_draft_files WHERE conversation_id=?', (conversation_id,))}
+                conn.executemany('INSERT INTO composer_draft_files VALUES (?,?,?)',
+                                 [(conversation_id, d, files[d]) for d in files.keys() - stored])
+                conn.executemany('DELETE FROM composer_draft_files WHERE conversation_id=? AND digest=?',
+                                 [(conversation_id, d) for d in stored - files.keys()])
+            return True
+        return await self._db.run(save)
+
+    async def delete_composer_draft(self, conversation_id: int) -> None:
+        """Remove a draft; its attachment copies cascade with it."""
+        def delete(conn: sqlite3.Connection) -> None:
+            with conn:
+                conn.execute('DELETE FROM composer_drafts WHERE conversation_id=?', (conversation_id,))
+        await self._db.run(delete)
+
+    async def composer_draft(self, conversation_id: int) -> tuple[dict[str, Any], dict[str, bytes]] | None:
+        """The draft row and its attachment copies by digest, or None."""
+        def read(conn: sqlite3.Connection) -> tuple[dict[str, Any], dict[str, bytes]] | None:
+            row = conn.execute('SELECT * FROM composer_drafts WHERE conversation_id=?',
+                               (conversation_id,)).fetchone()
+            if row is None:
+                return None
+            files = {r[0]: r[1] for r in conn.execute(
+                'SELECT digest, data FROM composer_draft_files WHERE conversation_id=?', (conversation_id,))}
+            return dict(row), files
+        return await self._db.run(read)
 
     # --- messages -----------------------------------------------------------
 

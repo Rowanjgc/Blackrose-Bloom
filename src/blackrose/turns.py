@@ -41,7 +41,7 @@ from .prompts import DraftMessage, Prompt, PromptBuilder, count_prompt
 from .repairs import repair_text
 from .storage.records import MessageState
 from .storage.repository import DEFAULT_TITLE, derive_title
-from .storage.db import _worker
+from .storage.db import run_to_completion
 from .tool_execution import ToolExecutor
 from .tools import animation_tools
 from .telemetry import GenerationMetrics
@@ -486,7 +486,7 @@ class TurnRunner:
         committed reply, so failure settlement can resolve it.
         """
         c = self.chat
-        persisted = await _worker(lambda: c._persist_attachments(prepared.accepted))
+        persisted = await run_to_completion(lambda: c._persist_attachments(prepared.accepted))
         creation = asyncio.create_task(self.repo.begin_turn(
             c.conversation.id, text, c.model_name, attachments=persisted, refs=prepared.refs,
             **({'ui_event_id': ui_event_id} if ui_event_id else {})))

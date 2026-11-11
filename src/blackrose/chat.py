@@ -32,7 +32,7 @@ from .prompts import wire_message
 from .turns import Turn as Turn, TurnRunner
 from .storage.records import TitleSource
 from .storage.repository import DEFAULT_TITLE, derive_title
-from .storage.db import _worker
+from .storage.db import run_to_completion
 from .artifacts import ArtifactLifecycle, settle
 from .titles import TITLE_TIMEOUT, title_messages
 
@@ -1132,7 +1132,7 @@ class ChatController:
                 attachment = next((a for a in existing if a.output_path == output
                     and a.digest == hashlib.sha256(data).hexdigest()), None)
                 if attachment is None:
-                    blob = await _worker(lambda: self._store.write(data, Path(output).suffix))
+                    blob = await run_to_completion(lambda: self._store.write(data, Path(output).suffix))
                     new = NewAttachment(kind='artifact',
                         mime_type=mimetypes.guess_type(output)[0] or 'text/plain',
                         filename=Path(output).name, storage_path=blob.relative_path,
@@ -1270,7 +1270,7 @@ class ChatController:
         try:
             result = await self.edit_backups.replace(
                 self.conversation.id, path, 'restore:' + backup_id, record['published_digest'], record['digest'],
-                lambda new_id: _worker(lambda: files.write(path, data, collision='replace', reviewed=True,
+                lambda new_id: run_to_completion(lambda: files.write(path, data, collision='replace', reviewed=True,
                     expected_digest=record['published_digest'], backup_id=new_id)))
         except FileAccessError as error:
             if error.code == 'file_changed':
@@ -1390,7 +1390,7 @@ class ChatController:
                 motion['notice'] = None
         if on_progress:
             on_progress('saving')
-        blob = await _worker(lambda: self._store.write(data, '.animation.json'))
+        blob = await run_to_completion(lambda: self._store.write(data, '.animation.json'))
         attachment = NewAttachment(kind='animation', mime_type=MIME_TYPE,
             filename=arguments['scene']['title'] + '.animation.json',
             storage_path=blob.relative_path, digest=blob.digest, size=blob.size,
@@ -1455,7 +1455,7 @@ class ChatController:
             count = len(await self._repo.attachments_for(assistant.id)) + 1
             pending = PendingAttachment(f'illustration-{count:02d}{generated.info.suffix}',
                                         generated.data, image=generated.info)
-            persisted = await _worker(lambda: self._persist_attachments([pending]))
+            persisted = await run_to_completion(lambda: self._persist_attachments([pending]))
             return await self._repo.append_attachments(assistant.id, persisted)
 
         # The effect has completed. Stop may end the reply, but it must receive

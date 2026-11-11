@@ -12,7 +12,7 @@ One `CitationAudit` instance exists per rigor-enabled reply. It is created by
 `src/blackrose/turns.py::TurnRunner._start_reply` and awaited by `src/blackrose/turns.py::TurnRunner._complete` on the `TurnRunner` task, so every transition below runs
 on the reply's own asyncio task; there is no second writer. The *persisted*
 report is written on that task through the repository's serialized database
-worker (`storage/db.py::_worker`), so a checkpoint is either wholly before or
+worker (`storage/db.py::run_to_completion`), so a checkpoint is either wholly before or
 wholly after a terminal write.
 
 Ownership boundaries from `docs/architecture.md`: `citations.py` owns

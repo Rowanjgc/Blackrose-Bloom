@@ -41,7 +41,7 @@ def _loads(value, default):
 
 
 class ComposerDrafts:
-    """Draft rows, written through the chat database's serialized worker."""
+    """Bounded draft values, persisted through the Repository."""
 
     def __init__(self, repository) -> None:
         self._repo = repository
@@ -76,47 +76,17 @@ class ComposerDrafts:
             'text': sending['text'][:MAX_DRAFT_CHARS], 'refs': bounded_refs(sending['refs']),
             'attachments': json.loads(entries(sending['attachments'])),
             'baseline': int(sending['baseline'])}) if sending else None
-        empty = not (text or refs or attachments or sending)
-        row = (text, json.dumps(refs), entries(attachments), saved_sending,
-               datetime.now(UTC).isoformat(timespec='microseconds'), conversation_id)
-
-        def write(conn) -> bool:
-            with conn:
-                if empty:
-                    conn.execute('DELETE FROM composer_drafts WHERE conversation_id=?', (conversation_id,))
-                    return True
-                # An upsert, never REPLACE: replacing the row would cascade away
-                # its files. Selecting the owner refuses a deleted conversation.
-                inserted = conn.execute(
-                    'INSERT INTO composer_drafts(conversation_id, text, refs, attachments, sending, updated_at) '
-                    'SELECT id, ?, ?, ?, ?, ? FROM conversations WHERE id=? '
-                    'ON CONFLICT(conversation_id) DO UPDATE SET text=excluded.text, refs=excluded.refs, '
-                    'attachments=excluded.attachments, sending=excluded.sending, '
-                    'updated_at=excluded.updated_at', row).rowcount
-                if not inserted:
-                    return False
-                stored = {r[0] for r in conn.execute(
-                    'SELECT digest FROM composer_draft_files WHERE conversation_id=?', (conversation_id,))}
-                conn.executemany('INSERT INTO composer_draft_files VALUES (?,?,?)',
-                                 [(conversation_id, d, files[d]) for d in files.keys() - stored])
-                conn.executemany('DELETE FROM composer_draft_files WHERE conversation_id=? AND digest=?',
-                                 [(conversation_id, d) for d in stored - files.keys()])
+        if not (text or refs or attachments or sending):
+            await self._repo.delete_composer_draft(conversation_id)
             return True
-
-        return await self._repo._db.run(write)
+        return await self._repo.save_composer_draft(
+            conversation_id, text=text, refs=json.dumps(refs), attachments=entries(attachments),
+            sending=saved_sending, updated_at=datetime.now(UTC).isoformat(timespec='microseconds'),
+            files=files)
 
     async def load(self, conversation_id: int) -> dict | None:
         """The saved draft, with ``None`` in place of any missing attachment copy."""
-        def read(conn):
-            row = conn.execute('SELECT * FROM composer_drafts WHERE conversation_id=?',
-                               (conversation_id,)).fetchone()
-            if row is None:
-                return None
-            files = {r[0]: r[1] for r in conn.execute(
-                'SELECT digest, data FROM composer_draft_files WHERE conversation_id=?', (conversation_id,))}
-            return dict(row), files
-
-        loaded = await self._repo._db.run(read)
+        loaded = await self._repo.composer_draft(conversation_id)
         if loaded is None:
             return None
         row, files = loaded
