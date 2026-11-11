@@ -393,7 +393,7 @@ class RepairInterruptionTests(_RepositoryCase):
         return runner
 
     async def test_stop_after_the_repair_commit_still_settles_the_reply(self):
-        """Database._worker finishes the write, then raises CancelledError (db.py:20-35).
+        """run_to_completion finishes the write, then raises CancelledError (storage/db.py).
 
         H1 (fixed): memory follows the attempted commit, so the in-memory block
         agrees with the row ('ready' revision 2) and the interrupted settlement

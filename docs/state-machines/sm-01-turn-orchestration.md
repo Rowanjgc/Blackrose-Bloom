@@ -17,7 +17,7 @@ except the plain-reply checkpoint task (`src/blackrose/turns.py::TurnRunner._che
 serialized through `src/blackrose/storage/db.py::Database.run`: an `asyncio.Lock`
 around one worker thread, with rollback on failure and a worker that keeps the
 lock until the thread finishes even when its awaiting task is cancelled
-(`src/blackrose/storage/db.py::_worker`). That is what makes the shield-and-wait idioms in
+(`src/blackrose/storage/db.py::run_to_completion`). That is what makes the shield-and-wait idioms in
 `_complete` and `_settle_interrupted` meaningful: a
 cancelled waiter does not cancel the write.
 
@@ -147,7 +147,7 @@ them also has `A` and `S`, which is invariant 3.
 | --- | --- | --- |
 | E1 | Send | `src/blackrose/chat.py::ChatController.send` → `src/blackrose/turns.py::TurnRunner.run` |
 | E2 | Admit | `src/blackrose/turns.py::TurnRunner._prepare` passes attachment, model, reference, vision and admission checks |
-| E3 | Commit | `_worker(_persist_attachments)` then shielded `repo.begin_turn` (`src/blackrose/turns.py::TurnRunner._begin_turn`) |
+| E3 | Commit | `run_to_completion(_persist_attachments)` then shielded `repo.begin_turn` (`src/blackrose/turns.py::TurnRunner._begin_turn`) |
 | E4 | Attach services | `src/blackrose/turns.py::TurnRunner._start_reply` |
 | E5 | Rounds | `src/blackrose/turns.py::TurnRunner._answer` → `_stream_round`/`_run_tools` |
 | E6 | Complete | `src/blackrose/turns.py::TurnRunner._complete`: audit (optional), drain, shielded `finish_message(COMPLETE)` |
@@ -319,7 +319,7 @@ also the states while the final write is in flight.
 | Shielded boundary | Site | What a Stop does |
 | --- | --- | --- |
 | `builder.build` in `_prepare` | `src/blackrose/turns.py::TurnRunner._prepare` (not shielded; `to_thread`) | Raises at once; the build thread's result is discarded; nothing stored; reservation released (`finally` of `_run`) |
-| `_worker(_persist_attachments)` | `src/blackrose/turns.py::TurnRunner._begin_turn` (worker shielded, caller not) | `_worker` waits for the thread, then raises `CancelledError`; blobs exist, no rows; H4 |
+| `run_to_completion(_persist_attachments)` | `src/blackrose/turns.py::TurnRunner._begin_turn` (worker shielded, caller not) | `run_to_completion` waits for the thread, then raises `CancelledError`; blobs exist, no rows; H4 |
 | `asyncio.shield(repo.begin_turn)` | `src/blackrose/turns.py::TurnRunner._begin_turn` | The handler waits for the identity, latches `assistant` + `last_request_stored`, re-raises → `CANCELLED` row |
 | `audit.inherit` / `audit.checkpoint('')` | `src/blackrose/turns.py::TurnRunner._start_reply` (not shielded) | Raises; the audit is already attached, so settlement writes an `unchecked_report` over `draft_text` (still `''`) |
 | `asyncio.shield(checkpoint_task)` | `src/blackrose/turns.py::TurnRunner._stop_checkpoints` (single shot) | Raises out of `_complete`; the task keeps running (shield protects it) and settlement drains it again → H2 |

@@ -17,8 +17,13 @@ class StorageError(RuntimeError):
     pass
 
 
-async def _worker[T](fn: Callable[[], T]) -> T:
-    """Keep the caller's lock until thread completion, even after cancellation."""
+async def run_to_completion[T](fn: Callable[[], T]) -> T:
+    """Run ``fn`` in a thread and wait for it to finish, even if the caller is cancelled.
+
+    Cancellation is re-raised only after the thread completes, so a caller's lock
+    is held until the effect has settled. Database work, blob writes and artifact
+    cleanup use it wherever a started effect must not outlive its owner.
+    """
     task = asyncio.create_task(asyncio.to_thread(fn))
     cancelled = False
     while not task.done():
@@ -70,14 +75,14 @@ class Database:
                 # protected by the lock if its awaiting task is cancelled.
                 self._conn = conn
 
-            await _worker(_open)
+            await run_to_completion(_open)
 
     async def close(self) -> None:
         async with self._lock:
             if self._conn is None:
                 return
             conn, self._conn = self._conn, None
-            await _worker(conn.close)
+            await run_to_completion(conn.close)
 
     async def run[T](self, fn: Callable[[sqlite3.Connection], T]) -> T:
         """Serialize work and discard unfinished writes if the operation fails."""
@@ -91,7 +96,7 @@ class Database:
                     conn.rollback()
                     raise
 
-            return await _worker(_execute)
+            return await run_to_completion(_execute)
 
     @staticmethod
     def _migrate_connection(conn: sqlite3.Connection) -> int:

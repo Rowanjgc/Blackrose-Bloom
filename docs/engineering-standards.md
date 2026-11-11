@@ -130,7 +130,9 @@ a failure or Stop lands. Put new turn behavior in the phase that owns it, not in
 **Serialized persistence.** All SQLite access goes through the `Repository` and
 the one-connection worker in `storage/db.py`. Migrations run atomically with the
 schema version. Do not open a second writable connection or perform ad-hoc SQL
-from a feature module.
+from a feature module. `tests/test_storage_ownership.py` rejects reaching the
+Repository's database handle, importing private storage names and opening
+another SQLite connection outside `storage/` (`bra-a2r8`).
 
 **Provider adapters stay small.** Local and cloud providers sit behind
 `ChatProviders`; protocol-specific continuation details stay in `backend/`.

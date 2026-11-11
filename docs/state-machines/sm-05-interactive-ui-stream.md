@@ -258,10 +258,10 @@ is confined to `markdown`; no path rewrites an `interactive_ui` block except
 
 ## Hazards and open questions
 
-- **H1 — `defect` — `src/blackrose/turns.py::TurnRunner._repair_ui` (with `src/blackrose/storage/db.py::_worker`).** Stop can
-  land inside `await self.repo.repair_block(...)`. `Database._worker` keeps
+- **H1 — `defect` — `src/blackrose/turns.py::TurnRunner._repair_ui` (with `src/blackrose/storage/db.py::run_to_completion`).** Stop can
+  land inside `await self.repo.repair_block(...)`. `run_to_completion` keeps
   waiting for the worker thread after cancellation and only then re-raises
-  `CancelledError` (`src/blackrose/storage/db.py::_worker`), so the repair **is committed** while the
+  `CancelledError` (`src/blackrose/storage/db.py::run_to_completion`), so the repair **is committed** while the
   caller never reaches `block.clear(); block.update(candidate)`.
   The interrupted settlement then calls `end('cancelled')` and `save_blocks`
   (`src/blackrose/turns.py::TurnRunner._save_interrupted`) with the block still `invalid` revision 1 while the row is
@@ -316,7 +316,7 @@ is confined to `markdown`; no path rewrites an `interactive_ui` block except
   (`ui-runtime/host.jsx::flush`) and retries the *same* `sequence + 1` after any failure
   (the `catch` in `flush` sets `dirty` again), and `update()` never refreshes `record.sequence` from an incoming
   payload (`ui-runtime/host.jsx::update`). A committed-but-unacknowledged save (cancellation after
-  commit is possible for the same `_worker` reason as H1) therefore wedges that
+  commit is possible for the same `run_to_completion` reason as H1) therefore wedges that
   widget's saves until the page re-mounts. Not executed: the window needs a
   bridge reply lost after the row was written. Confirm with a probe that
   cancels `Session.ui_state` after `save_ui_state` returns and then retries.
@@ -472,10 +472,10 @@ invariants and hazards; the interactive-answer policy tests live in
 [checkout setup](../../CONTRIBUTING.md#set-up-a-checkout).
 
 Unverified: H5's lost-reply window (needs a bridge reply cancelled after the row
-is written; reasoned from `src/blackrose/storage/db.py::_worker` and
+is written; reasoned from `src/blackrose/storage/db.py::run_to_completion` and
 `ui-runtime/host.jsx::flush`/`ui-runtime/host.jsx::update`). H1's cancellation
 of the repair commit is reproduced with a wrapper that awaits the real
-`repair_block` and then raises `CancelledError`, which is exactly `_worker`'s
+`repair_block` and then raises `CancelledError`, which is exactly `run_to_completion`'s
 post-cancellation contract; the settlement half runs the real
 `_save_interrupted`, and the row outcome was asserted directly. A GUI Stop was
 not raced through the real turn to hit the same instruction.

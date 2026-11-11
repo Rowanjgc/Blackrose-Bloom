@@ -4,7 +4,7 @@
 
 | Surface | Location |
 | --- | --- |
-| `ArtifactLifecycle` (`exclusive`, `report`, `retry`, `repair`), `inventory`, `reconciliation`, `settle`, path predicates | `src/blackrose/artifacts.py` |
+| `ArtifactLifecycle` (`exclusive`, `report`, `retry`, `repair`), `reconciliation`, `settle`, path predicates; the ownership `inventory` is `src/blackrose/storage/repository.py::read_ownership_inventory` | `src/blackrose/artifacts.py`, `src/blackrose/storage/repository.py` |
 | Cleanup rows and their transitions | `src/blackrose/storage/repository.py::Repository.delete_conversation`, `src/blackrose/storage/repository.py::Repository.cleanup_jobs`, `src/blackrose/storage/repository.py::Repository.queue_cleanup`, `src/blackrose/storage/repository.py::Repository.finish_cleanup`; schema `src/blackrose/storage/migrations.py::MIGRATIONS` (migration 4) |
 | Command entry points and the controller's last result | `src/blackrose/chat.py::ChatController.delete_current_conversation`, `src/blackrose/chat.py::ChatController.artifact_report`, `src/blackrose/chat.py::ChatController.retry_artifact_cleanup`, `src/blackrose/chat.py::ChatController.repair_artifacts`, `src/blackrose/chat.py::ChatController._delete_current_conversation` |
 | Startup retry | `src/blackrose/runtime.py::Runtime.open` |
@@ -142,7 +142,7 @@ another symbol is given.
 | `Queued` | `retry()`, any row, `OSError`/`ValueError`/`sqlite3.Error` | the `except` around each job | `finish_cleanup(kind,target,str(error))` | `Failed` |
 | `Failed` | `retry()` and the obstruction is gone | guards above | verified effect + `finish_cleanup` | `Absent` |
 | `Failed` | `retry()` and it fails again | the `except` around each job | `UPDATE artifact_cleanup SET error=?` (`src/blackrose/storage/repository.py::Repository.finish_cleanup`) | `Failed` (new text) |
-| `Queued` | cancellation between effect and acknowledgement | `_worker` finishes the thread, then re-raises `CancelledError` (`src/blackrose/storage/db.py::_worker`) | no acknowledgement | `Queued` |
+| `Queued` | cancellation between effect and acknowledgement | `run_to_completion` finishes the thread, then re-raises `CancelledError` (`src/blackrose/storage/db.py::run_to_completion`) | no acknowledgement | `Queued` |
 | `Queued`/`Failed` | `finish_cleanup` succeeds for an already-absent file | `store.delete` is `missing_ok` (`src/blackrose/attachments/store.py::AttachmentStore.delete`) | `completed` | `Absent` |
 | `Queued`/`Failed` | process death before acknowledgement | rows committed with the delete transaction | none | unchanged at next start |
 | `Queued`/`Failed` | startup `Runtime.open` | `exclusive` via `src/blackrose/chat.py::ChatController.retry_artifact_cleanup` | `retry()` | per rows above |
@@ -156,7 +156,7 @@ Ownership transitions:
 | `Held(*)` | another turn or command | `_lock.locked()` | `raise ChatBusy`; nothing queues | unchanged |
 | `Held(command)` | command returns/raises | — | context-manager exit | `Idle` |
 | `Held(command)` | cancel `delete_current_conversation` | operation wrapped by `settle` (`src/blackrose/chat.py::ChatController.delete_current_conversation`) | wait for the worker, then re-raise `CancelledError` | `Held(command, settling)` → `Idle` |
-| `Held(command)` | cancel `report`/`retry`/`repair` | not wrapped by `settle`; each `_worker` still settles | next await raises; rows keep their last state | `Idle` (partial drain) |
+| `Held(command)` | cancel `report`/`retry`/`repair` | not wrapped by `settle`; each `run_to_completion` still settles | next await raises; rows keep their last state | `Idle` (partial drain) |
 | `Held(turn)` | turn completes, fails or is stopped | `TurnRunner` settles its own persistence | unlock | `Idle` |
 
 ## Invariants
@@ -169,7 +169,7 @@ Ownership transitions:
    whose resolved store-relative path is any `message_attachments.storage_path` or
    `text_path` is never unlinked (`src/blackrose/artifacts.py::ArtifactLifecycle.retry`,
    the `protected` set). Both columns are read in one snapshot
-   (`src/blackrose/artifacts.py::inventory`).
+   (`src/blackrose/storage/repository.py::read_ownership_inventory`).
 3. **Deletion is confined.** No unlink happens through a symlink, a noncanonical
    path, or a path outside the store root: `owned_path` runs before
    `store.delete` (`src/blackrose/artifacts.py::ArtifactLifecycle.retry`,

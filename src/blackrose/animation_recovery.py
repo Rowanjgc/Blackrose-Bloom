@@ -11,7 +11,7 @@ from contextlib import closing
 import logging
 import sqlite3
 
-from .storage.db import _worker
+from .storage.db import run_to_completion
 
 MAX_REPAIRS = 2
 REPAIR_REQUEST_PREFIX = 'Automatic animation repair (app-generated).'
@@ -49,7 +49,7 @@ class AnimationRecovery:
                     'SELECT * FROM repairs WHERE conversation_id=?', (conversation_id,))}
         try:
             async with self._lock:
-                return await _worker(read)
+                return await run_to_completion(read)
         except (sqlite3.Error, OSError):
             # Auxiliary recovery state must never prevent a chat from opening.
             log.warning('Animation recovery state is unavailable', exc_info=True)
@@ -75,7 +75,7 @@ class AnimationRecovery:
                 return {'attachment_id': attachment_id, 'root_id': root, 'attempt': attempt,
                         'status': status, 'claimed': status == 'repairing'}
         async with self._lock:
-            return await _worker(claim)
+            return await run_to_completion(claim)
 
     async def finish(self, conversation_id, attachment_id, status, replacement_id=None):
         def finish():
@@ -87,14 +87,14 @@ class AnimationRecovery:
             # The lock is also the writer exclusion that lets a read-only
             # artifact report open the ledger with immutable=1 (snapshot.py:11).
             async with self._lock:
-                await _worker(finish)
+                await run_to_completion(finish)
         operation = asyncio.create_task(write())
         try:
             await asyncio.shield(operation)
         except asyncio.CancelledError:
             # The replacement link is recorded before the new attachment is
             # published, so a Stop must not drop it: an unlinked replacement
-            # would later start a fresh two-attempt chain. _worker already
+            # would later start a fresh two-attempt chain. run_to_completion already
             # completes the write; this also keeps the lock wait.
             try:
                 await operation
@@ -109,4 +109,4 @@ class AnimationRecovery:
                 with closing(self._connect()) as connection, connection:
                     connection.execute('DELETE FROM repairs WHERE conversation_id=?', (conversation_id,))
         async with self._lock:
-            await _worker(delete)
+            await run_to_completion(delete)

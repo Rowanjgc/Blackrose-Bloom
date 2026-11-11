@@ -38,7 +38,7 @@ Ownership, per [architecture](../architecture.md#modules-and-invariants) and
 - The **ledger** is auxiliary SQLite under the attachment store
   (created in `src/blackrose/chat.py::ChatController.__init__`), owned by the one
   desktop process (ADR 0001). Every operation is a function run on a worker
-  thread through `src/blackrose/storage/db.py::_worker`, which finishes the thread's work before it re-raises
+  thread through `src/blackrose/storage/db.py::run_to_completion`, which finishes the thread's work before it re-raises
   a caller cancellation. `AnimationRecovery._lock` serializes those operations
   *and* is the writer exclusion that lets an artifact report open the ledger
   read-only with `immutable=1` (`src/blackrose/artifacts.py::ArtifactLifecycle.report`,
@@ -393,7 +393,7 @@ code:
    task and waits for it before re-raising cancellation. The link is what makes a
    replacement join the chain, and the comment in `src/blackrose/tool_execution.py::ToolExecutor._animation_create`
    states the intent ("a crash/cancellation after save must not regenerate it").
-   `_worker` already survives cancellation, but the `asyncio.Lock` wait did not,
+   `run_to_completion` already survives cancellation, but the `asyncio.Lock` wait did not,
    and that lock can be held for a whole artifact report
    (`src/blackrose/artifacts.py::ArtifactLifecycle.report`).
    The lock itself is kept: it is the writer exclusion that lets that report open

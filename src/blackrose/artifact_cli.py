@@ -4,13 +4,13 @@ import sqlite3
 import sys
 
 from .animation_recovery import AnimationRecovery
-from .artifacts import ArtifactLifecycle, inventory, reconciliation
+from .artifacts import ArtifactLifecycle, reconciliation
 from .attachments import AttachmentStore
 from .config import data_dir
 from .instance import AlreadyRunning, desktop_instance
 from .storage.db import Database, StorageError
 from .storage.migrations import MIGRATIONS
-from .storage.repository import Repository
+from .storage.repository import Repository, read_ownership_inventory
 from .storage.snapshot import readonly_snapshot
 
 
@@ -19,7 +19,7 @@ def read_inventory(path):
         version = connection.execute('SELECT MAX(version) FROM schema_metadata').fetchone()[0]
         if version is None or version > max(version for version, _ in MIGRATIONS):
             raise StorageError('database schema is newer than this application')
-        return inventory(connection)
+        return read_ownership_inventory(connection)
 
 
 async def run(action=None):
