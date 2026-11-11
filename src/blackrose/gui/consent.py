@@ -345,7 +345,7 @@ class ConsentSheet:
         GTK 3 measures wrapped labels in a scrolled window at their natural width,
         which leaves a long address cut off with no sign that more follows.
         """
-        from gi.repository import Pango
+        from gi.repository import Pango  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
         inner = width - 2 - 32  # the well's border and padding
         height = 2 + 24 + 4     # border, padding and spacing
         texts = [(text, inner) for text in (self._caption, self._payload)]
@@ -445,7 +445,7 @@ class ConsentSheet:
 
 def _exact(label) -> None:
     """Wrap without inserting hyphens, which would show a payload as something it is not."""
-    from gi.repository import Pango
+    from gi.repository import Pango  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
     attributes = Pango.AttrList()
     attributes.insert(Pango.attr_insert_hyphens_new(False))
     label.set_attributes(attributes)
@@ -458,7 +458,7 @@ def install(window) -> None:
     after the WebKit view is in the window and before the page loads.
     """
     def attach():
-        from gi.repository import Atk, Gdk, GLib, Gtk
+        from gi.repository import Atk, Gdk, GLib, Gtk  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
         try:
             browser = window.gui.BrowserView.instances[window.uid]
             window._blackrose_consent = ConsentSheet(browser.window, browser.webview, Gtk, GLib, Gdk, Atk)

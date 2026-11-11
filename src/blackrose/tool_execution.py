@@ -9,6 +9,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
 from collections.abc import Callable
+from .tools import animation_tools, MAX_TOOL_RESULT_CHARS, validate_call
+from .motion_plan import validate_plan, assemble_source
 
 if TYPE_CHECKING:
     from .citations import CitationAudit
@@ -19,7 +21,6 @@ from .animations import normalize_arguments, repair_details
 from .errors import RecoveryRequired
 from .illustrations import CONTRACT, SKILL_ID, IllustrationDrafts, plan_markdown, prepare_illustration
 from .tool_host import ToolHost
-from .tools import MAX_TOOL_RESULT_CHARS, validate_call
 from .library import Capture
 from .outbound import OutboundDenied
 from .prompts import ANIMATION_SKILL_ID
@@ -162,7 +163,6 @@ class ToolExecutor:
 
     def definitions(self) -> list[dict]:
         if self.animation_repair_id is not None:
-            from .tools import animation_tools
             return ([] if self.animation_created or not self.host.automatic_animation_repair
                     else animation_tools([self.animation_repair_id]))
         definitions = self.host.tool_definitions(
@@ -309,7 +309,6 @@ class ToolExecutor:
         return result
 
     async def _animation_plan(self, inv: ToolInvocation) -> dict:
-        from .motion_plan import validate_plan
         arguments = inv.arguments
         if self.motion_plan_disabled:
             raise ValueError('Plan-first is unavailable for this reply; use animation_create directly')
@@ -323,7 +322,6 @@ class ToolExecutor:
                           'use animation_create directly if its motion is unsupported.'}
 
     async def _animation_create_planned(self, inv: ToolInvocation) -> dict:
-        from .motion_plan import assemble_source
         arguments = inv.arguments
         if self.motion_plan is None or self.motion_plan_disabled:
             raise ValueError('No accepted plan is available; use animation_create directly')

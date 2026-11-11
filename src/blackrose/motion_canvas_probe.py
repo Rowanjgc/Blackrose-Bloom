@@ -10,10 +10,10 @@ import sys
 
 
 def main():
-    import gi
+    import gi  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
     gi.require_version('Gtk', '3.0')
     gi.require_version('WebKit2', '4.1')
-    from gi.repository import GLib, Gtk, WebKit2
+    from gi.repository import GLib, Gtk, WebKit2  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
 
     payload = json.load(sys.stdin)
     if not Gtk.init_check()[0]:

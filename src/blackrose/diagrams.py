@@ -23,7 +23,7 @@ def available() -> bool:
 
 def closed_fence(state, start, end, silent):
     """Distinguish explicit closure from CommonMark container/EOF closure."""
-    from markdown_it.rules_block import fence as commonmark_fence
+    from markdown_it.rules_block import fence as commonmark_fence  # noqa: PLC0415 - Markdown parser loads on first parse
     accepted = commonmark_fence(state, start, end, silent)
     if accepted and not silent:
         token = state.tokens[-1]
@@ -40,7 +40,7 @@ FENCE_OPTIONS: RuleOptionsType = {'alt': ['paragraph', 'reference', 'blockquote'
 
 
 def diagram_tokens(text):
-    from markdown_it import MarkdownIt
+    from markdown_it import MarkdownIt  # noqa: PLC0415 - Markdown parser loads on first parse
     md = MarkdownIt('commonmark')
     md.block.ruler.at('fence', closed_fence, FENCE_OPTIONS)
     return [token for token in md.parse(text) if token.type == 'fence'

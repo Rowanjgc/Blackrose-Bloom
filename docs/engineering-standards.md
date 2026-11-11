@@ -172,7 +172,20 @@ that were hidden behind function-local imports under `bra-lae` are removed:
 
 Higher-level policy modules may import lower-level data/utility modules. A lower
 level module must not import the controller, the session or the page bridge to
-reach policy.
+reach policy. The same test enforces this: only the runtime and the desktop shell
+import `chat.py`, only `gui/` and `main.py` import the shell, and `storage/`
+reaches outside itself only for the pure citation-digest and diagram-token
+helpers it applies inside transactions.
+
+Ruff's `PLC0415` enforces module-level imports in `src/` (`bra-bnqx`). A
+function-local import carries its reason on the line, as
+`# noqa: PLC0415 - <reason>`; the entry points `main.py`, `runtime.py`,
+`gui/app.py` and `local_knowledge/cli.py` defer by design and are exempt in
+`pyproject.toml`. Before deferring for cost, measure it: compare
+`python -X importtime` for the affected entry points with and without the
+import at module level, and keep it local only if a startup path users wait on
+gets measurably slower. When a hoisted name was a test seam, patch it where it
+is looked up, or import the module and call through it.
 
 ## 3. Code organization and readability
 

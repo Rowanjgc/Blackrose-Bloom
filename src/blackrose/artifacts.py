@@ -17,6 +17,7 @@ from .errors import ChatBusy
 from .instance import DesktopOwnership
 from .storage.db import run_to_completion
 from .storage.snapshot import readonly_snapshot
+from .illustrations import delete_conversation_drafts
 
 _BLOB = re.compile(r'([0-9a-f]{2})/([0-9a-f]{2})/([0-9a-f]{64})(\.[^/\x00]+)?')
 
@@ -203,7 +204,6 @@ class ArtifactLifecycle:
                     if await self.repo.get_conversation(conversation_id) is not None:
                         preserved.append(job)
                     elif kind == 'drafts':
-                        from .illustrations import delete_conversation_drafts
                         await run_to_completion(lambda conversation_id=conversation_id: delete_conversation_drafts(
                             self.store.root, conversation_id))
                         completed.append(job)

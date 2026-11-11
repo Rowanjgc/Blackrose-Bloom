@@ -16,8 +16,9 @@ import logging
 import re
 from typing import Any, NotRequired, TypedDict
 
-from .prompts import Prompt
+from .prompts import Prompt, count_prompt
 from .tools import MAX_TOOL_RESULT_CHARS, validate_call
+from .telemetry import GenerationMetrics
 
 log = logging.getLogger(__name__)
 
@@ -214,7 +215,7 @@ def prose_ranges(line: str) -> list[tuple[int, int]]:
 def answer_units(text: str) -> list[dict]:
     """Provide host-owned answer positions; code fences are outside factual prose."""
     units: list[dict] = []
-    from markdown_it import MarkdownIt
+    from markdown_it import MarkdownIt  # noqa: PLC0415 - Markdown parser loads on first parse
     excluded_lines: set[int] = set()
     for token in MarkdownIt('commonmark').parse(text):
         if token.type in ('fence', 'code_block') and token.map:
@@ -768,8 +769,6 @@ class CitationAudit:
                     {'role': 'user', 'content': json.dumps(data, ensure_ascii=False)}]
         content = ''
         finish = None
-        from .telemetry import GenerationMetrics
-        from .prompts import count_prompt
         prompt = Prompt(messages=messages, instructions=instructions)
         prompt.counts = count_prompt(messages, [])
         metrics = GenerationMetrics(self.builder.model, messages, [], self.on_metrics, counts=prompt.counts)

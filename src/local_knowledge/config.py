@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import re
 import tomllib
+import json
 
 
 def config_path():
@@ -68,7 +69,6 @@ class Config:
         return cls(**values)
 
     def save(self, path):
-        import json
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("\n".join(f"{f.name} = {json.dumps(getattr(self, f.name))}" for f in fields(self)) + "\n")

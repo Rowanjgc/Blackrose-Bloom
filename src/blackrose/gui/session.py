@@ -10,6 +10,7 @@ import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+import secrets
 
 from ..attachments import (SUPPORTED_DOCUMENT_TYPES, SUPPORTED_IMAGE_TYPES,
     InvalidDocument, InvalidImage, TooManyAttachments, TooManyDocuments,
@@ -23,8 +24,15 @@ from ..storage.records import StoredAttachment, UIBlock
 from ..ui_documents import UIEnvelope
 from .model_names import model_display_name
 from .render import StreamRenderer, message_payload, to_html, audited_html, stored_block_html
-from ..citations import audit_payload
+from ..citations import audit_payload, EvidenceRegistry, new_report, unchecked_report
 from ..diagnostics import reply_diagnostics
+from ..animations import load_scene
+from ..motion_canvas import player_document
+from ..clipboard import clipboard_has_image, paste_image, paste_text
+from ..outbound import SITE, OutboundBatch
+from ..backend.providers import model_provider
+from ..backend.opencode import ENDPOINT
+from ..credentials import CredentialError, OpenRouterKeychain
 
 log = logging.getLogger(__name__)
 Emit = Callable[[str, dict], None]
@@ -529,7 +537,6 @@ class Session:
                   'status': self._status_payload()})
 
     def _ui_payload(self, blocks, *, identity=None):
-        import secrets
         result = []
         for original in blocks:
             block = dict(original)
@@ -713,7 +720,6 @@ class Session:
                            mime_type=attachment.mime_type, size=attachment.size)
             return payload
         if attachment.kind == 'animation' and isinstance(attachment, StoredAttachment):
-            from ..animations import load_scene
             try:
                 path = self.controller.attachment_path(attachment)
                 if path is None:
@@ -721,7 +727,6 @@ class Session:
                 scene = load_scene(path)
                 payload.update(scene=scene, attachment_id=attachment.id)
                 if scene.get('engine') == 'motion-canvas':
-                    from ..motion_canvas import player_document
                     payload['player_document'] = player_document(scene)
                     payload['scene'] = {k: v for k, v in scene.items() if k not in ('source', 'compiled')}
                     if attachment.id in self._animation_recovery_states:
@@ -829,7 +834,6 @@ class Session:
 
         Returns ``{"text": ...}`` when the page should insert text itself.
         """
-        from ..clipboard import clipboard_has_image, paste_image, paste_text
 
         try:
             image = await paste_image()
@@ -1044,7 +1048,6 @@ class Session:
         Stop cancels the reply and discards the answer, but the prompt stays
         pending, as for directory prompts, until the user closes the dialog.
         """
-        from ..outbound import SITE, OutboundBatch
         def closed(_):
             self._permission_pending = False
         self._permission_pending = True
@@ -1516,7 +1519,6 @@ class Session:
             latest = summary.latest_assistant
             if latest:
                 return latest.content, await self.controller.message_audit(latest.id)
-        from ..citations import EvidenceRegistry, new_report, unchecked_report
         return text, unchecked_report(new_report(mode, self.controller.model_name, text, EvidenceRegistry(0)),
                                       text, 'Reply interrupted before the audit completed.')
 
@@ -1729,8 +1731,6 @@ class Session:
             self.notice(str(error), 'warning')
 
     async def models(self, provider=None):
-        from ..backend.providers import model_provider
-        from ..backend.opencode import ENDPOINT
         provider = provider or model_provider(self.controller.model_name)
         if provider not in ('local', 'opencode-go'):
             return {'error': 'Unknown model provider'}
@@ -1751,7 +1751,6 @@ class Session:
 
     async def image_providers(self):
         """Image generation options with Python-decided availability and reasons."""
-        from ..credentials import CredentialError, OpenRouterKeychain
         c = self.controller
         config = c.config
         local = c.local_image_generator

@@ -10,8 +10,11 @@ import tomllib
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import get_type_hints
+from urllib.parse import urlsplit
 
 from .backend.effort import DEFAULT_BUDGETS, LEVELS
+from .web.sites import trusted_entry
+import tomlkit
 
 APP_NAME = 'blackrose-bloom'
 RIGOR_MODES = ('off', 'advisory', 'balanced', 'strict')
@@ -275,7 +278,6 @@ class Config:
 
 def loopback_url(value, name) -> str:
     """An HTTP base URL on this machine, or ValueError naming the setting."""
-    from urllib.parse import urlsplit
     try:
         address = urlsplit(value) if isinstance(value, str) else None
     except ValueError:
@@ -290,7 +292,6 @@ def loopback_url(value, name) -> str:
 
 def trusted_hosts(entries) -> list[str]:
     """Normalized, deduplicated trusted sites, or ValueError naming the ones that cannot be trusted."""
-    from .web.sites import trusted_entry
     if not isinstance(entries, list) or any(not isinstance(e, str) for e in entries):
         raise _ConfigValueError('trusted_hosts must be a list of host names')
     refused = [e for e in entries if trusted_entry(e) is None]
@@ -390,7 +391,6 @@ def save_trusted_hosts(config: Config, entries) -> None:
 
 
 def _save_toml_key(config: Config, key: str, value) -> None:
-    import tomlkit
     path = getattr(config, '_config_path', config_dir() / 'config.toml')
     document = tomlkit.parse(path.read_text()) if path.exists() else tomlkit.document()
     # tomlkit places a new top-level key before the first table.

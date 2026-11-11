@@ -26,11 +26,23 @@ from collections.abc import Coroutine
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
+import secrets
+import html
 
 from ..runtime import Runtime
 from ..skills import StagedSkill
-from . import announcements
+from . import announcements, external
 from .session import Session
+from ..outbound import SITE, OutboundBatch, approval, batch_approval
+from .consent import WIDER
+from ..animations import export_html
+from ..config import DEFAULT_TRUSTED_HOSTS, state_dir
+from ..web.sites import trusted_entry
+from ..clipboard import copy_text
+from ..chat import ChatBusy
+from .render import to_html
+from ..workspace import FileAccessError
+from ..attachments.documents import inspect_document
 
 log = logging.getLogger(__name__)
 
@@ -275,8 +287,7 @@ class Api:
         return self._loop.run(self._s.ui_state(payload))
 
     def export_ui(self, payload) -> dict:
-        import webview
-        from pathlib import Path
+        import webview  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
         try:
             source = self._loop.run(self._s.ui_source(payload))
             if self._window is None:
@@ -294,7 +305,6 @@ class Api:
     def _approve_directories(self, grants):
         if self._window is None:
             return False
-        from . import external
         paths = '\n'.join(g['path'] for g in grants)
         return external.ask(self._window, 'Allow directory access?',
             'Blackrose would read files in these directories for this conversation, until the '
@@ -303,9 +313,6 @@ class Api:
 
     def _approve_outbound(self, request):
         """Native, per-request consent; page script cannot answer this dialog."""
-        from ..outbound import SITE, OutboundBatch, approval, batch_approval
-        from . import external
-        from .consent import WIDER
         if self._window is None:
             return False
         if isinstance(request, OutboundBatch):
@@ -339,7 +346,7 @@ class Api:
 
     def pick_files(self) -> int:
         """The attach button: the system file dialog, then each file in turn."""
-        import webview
+        import webview  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
 
         if self._window is None:
             return 0
@@ -360,7 +367,7 @@ class Api:
         return self._loop.run(self._s.image_preview(int(attachment_id)))
 
     def pick_workspace(self):
-        import webview
+        import webview  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
         if self._window is None:
             return None
         selection = self._loop.run(self._runtime.controller.begin_workspace_selection())
@@ -368,7 +375,6 @@ class Api:
         if not paths:
             return None
         async def select():
-            from ..chat import ChatBusy
             try:
                 grant = await self._runtime.controller.set_workspace(str(paths[0]), selection=selection)
             except ChatBusy as error:
@@ -393,10 +399,8 @@ class Api:
 
     def workspace_preview(self, path):
         async def preview():
-            from .render import to_html
             files = await self._runtime.controller.workspace_files()
             result = await asyncio.to_thread(files.read, str(path))
-            from pathlib import Path
             text = result['text']
             suffix = Path(path).suffix.lower()
             if suffix != '.md':
@@ -415,7 +419,6 @@ class Api:
 
     def review_edit(self, token, approve=False, reject=False):
         async def review():
-            from ..workspace import FileAccessError
             try:
                 result = await self._runtime.controller.review_edit(str(token), approve is True, reject is True)
             except FileAccessError as error:
@@ -433,7 +436,6 @@ class Api:
     def edit_backups(self, action='list', backup_id=None):
         """List, preview, restore or remove this conversation's edit backups, or apply retention."""
         async def run():
-            from ..workspace import FileAccessError
             try:
                 return await self._runtime.controller.edit_backup_action(
                     str(action), None if backup_id is None else str(backup_id))
@@ -449,7 +451,6 @@ class Api:
 
     def artifact_preview(self, attachment_id):
         async def preview():
-            import html
             c = self._runtime.controller
             attachment = next((a for m in await c.current_messages() for a in m.attachments
                                if a.id == int(attachment_id) and a.kind == 'artifact'), None)
@@ -458,11 +459,8 @@ class Api:
             data = await asyncio.to_thread(c._store.read, attachment.storage_path)
             if data is None:
                 raise ValueError('Artifact snapshot is missing')
-            from pathlib import Path
-            from .render import to_html
             suffix = Path(attachment.filename).suffix.lower()
             if suffix == '.pdf':
-                from ..attachments.documents import inspect_document
                 text, _ = await asyncio.to_thread(inspect_document, data, claimed_name=attachment.filename)
                 return {'html': '<p>PDF text preview. Use Open externally for the full page layout.</p><pre>' + html.escape(text) + '</pre>', 'pdf': True}
             text = data.decode('utf-8')
@@ -489,8 +487,6 @@ class Api:
             if path is None:
                 raise ValueError('File is missing')
             return str(path)
-        from pathlib import Path
-        from . import external
         path = Path(self._loop.run(location()))
         # Leaving the sandboxed preview needs the user's answer in a native
         # dialog that names the path and the application first.
@@ -499,9 +495,7 @@ class Api:
 
     def export_animation(self, attachment_id: int) -> dict:
         """User-selected animation to a user-chosen standalone HTML file."""
-        import webview
-        from pathlib import Path
-        from ..animations import export_html
+        import webview  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
 
         async def document():
             _, scene = await self._runtime.controller.read_animation(int(attachment_id))
@@ -547,7 +541,6 @@ class Api:
 
     def forget_memory(self) -> dict:
         """Irreversible, so only the native sheet, outside page script's reach, can confirm it."""
-        from . import external
         if self._window is None or external.ask(
                 self._window, 'Forget everything Blackrose remembers?',
                 'Every remembered note, the profile and what each conversation contributed will be '
@@ -560,14 +553,11 @@ class Api:
         return self._loop.run(self._s.set_citation_rigor(mode))
 
     def trusted_sites(self) -> dict:
-        from ..config import DEFAULT_TRUSTED_HOSTS
         return {'sites': list(self._runtime.controller.config.trusted_hosts),
                 'defaults': list(DEFAULT_TRUSTED_HOSTS)}
 
     def add_trusted_site(self, entry: str) -> dict:
         """Trusting a site widens what model-written requests may reach, so only the native sheet adds one."""
-        from ..web.sites import trusted_entry
-        from . import external
         trusted = trusted_entry(entry)
         if trusted is None:
             return {'error': 'That cannot be a trusted site: use one host name, or *. and a domain. IP '
@@ -642,7 +632,6 @@ class Api:
 
     def approve_skill_execution(self, key: str, digest: str) -> bool:
         """Page requests a review; only the native sheet can authorize execution."""
-        from . import external
         if self._window is None:
             return False
         review = self.review_skill_execution(str(key))
@@ -675,7 +664,7 @@ class Api:
         """Stage a chosen folder and return its review; nothing is installed yet."""
         if self._window is None:
             return {'cancelled': True}
-        import webview
+        import webview  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
         paths = self._window.create_file_dialog(webview.FileDialog.FOLDER)
         if not paths:
             return {'cancelled': True}
@@ -692,7 +681,6 @@ class Api:
             pending[1].cleanup()
 
     def _finish_skill_import(self, token, approve):
-        import secrets
         pending = getattr(self, '_skill_import', None)
         if pending is None or not secrets.compare_digest(pending[0], token):
             raise ValueError('This skill review has expired. Import the folder again.')
@@ -706,7 +694,6 @@ class Api:
         return self._runtime.controller.skills.publish_install(staged, approved=True)
 
     async def _stage_skill_import(self, path):
-        import secrets
         if self._runtime.controller.is_generating:
             raise ValueError('Wait for the reply to finish')
         skills = self._runtime.controller.skills
@@ -759,7 +746,7 @@ class Api:
     def knowledge_import(self) -> dict:
         if self._window is None:
             return {'imports': []}
-        import webview
+        import webview  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
         paths = self._window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True,
                     file_types=('Local documents (*.md;*.txt;*.pdf;*.html;*.htm)',))
         return {'imports': [self._loop.run(self._runtime.controller.knowledge.call('add', path=str(path)))
@@ -770,7 +757,6 @@ class Api:
     def open_link(self, url: str) -> bool:
         """Links open in the default browser or email app once the user confirms
         the full address natively; the window never navigates."""
-        from . import external
         return external.hand_off(self._window, external.link(str(url)))
 
     def save_layout(self, layout: dict) -> bool:
@@ -799,7 +785,6 @@ class Api:
 
     def _layout_file(self):
         if self._layout_path is None:
-            from ..config import state_dir
 
             self._layout_path = state_dir() / "window.json"
         return self._layout_path
@@ -812,8 +797,6 @@ class Api:
         return data if isinstance(data, dict) else {}
 
     def copy(self, text: str) -> bool:
-        from ..clipboard import copy_text
-
         return bool(self._loop.run(copy_text(str(text))))
 
     def quit(self) -> None:

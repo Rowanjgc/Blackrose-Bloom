@@ -26,6 +26,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from urllib.parse import urlsplit
+from html.parser import HTMLParser
+import secrets
 
 from latex2mathml.converter import convert as latex_to_mathml
 from lxml import etree
@@ -42,6 +44,7 @@ from ..storage.records import MessageState, StoredMessage
 from ..diagnostics import reply_diagnostics
 from ..diagrams import closed_fence, FENCE_OPTIONS, diagram_tokens
 from ..outbound import ascii_host, visible
+from ..citations import digest, display_report
 
 _SAFE_SCHEMES = ("http://", "https://", "mailto:")
 
@@ -173,9 +176,6 @@ def audited_html(text: str, report: dict | None, *, diagrams=None, diagram_block
     """Insert trusted citation controls in text nodes, never model HTML/attributes."""
     if not report or report['status'] == 'not_applicable':
         return to_html(text, diagrams=diagrams, diagram_block=diagram_block)
-    from html.parser import HTMLParser
-    import secrets
-    from ..citations import digest, display_report
     if report['body_hash'] != digest(text):
         return to_html(text, diagrams=diagrams, diagram_block=diagram_block)
     report = display_report(text, report)

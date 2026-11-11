@@ -18,6 +18,7 @@ import stat
 import time
 
 from .attachments.documents import MAX_DOCUMENT_BYTES, DocumentInfo, inspect_document, sniff_document
+from .config import data_dir
 
 MAX_WRITE_BYTES = 256_000
 MAX_SCAN = 2000
@@ -390,7 +391,6 @@ def _directory_fd(path, create=False):
 
 
 def default_backup_store():
-    from .config import data_dir
     return data_dir() / BACKUP_FOLDER
 
 

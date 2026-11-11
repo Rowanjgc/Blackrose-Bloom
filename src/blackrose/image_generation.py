@@ -5,6 +5,7 @@ import asyncio
 import base64
 import binascii
 from dataclasses import dataclass
+import json
 
 import httpx
 
@@ -70,7 +71,6 @@ class OpenRouterImages:
         except httpx.HTTPError:
             raise RuntimeError('OpenRouter image request failed. Check your connection; the request was not retried.') from None
         try:
-            import json
             body = json.loads(data)
             encoded = body['data'][0]['b64_json']
             if not isinstance(encoded, str) or len(encoded) > (MAX_IMAGE_BYTES + 2) // 3 * 4:

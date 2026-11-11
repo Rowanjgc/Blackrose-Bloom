@@ -1,8 +1,10 @@
 """Explicit model-provider selection; local presets stay with llama-router."""
 from contextlib import aclosing, nullcontext
+from uuid import NAMESPACE_URL, uuid5
 
 from .effort import DEFAULT_ONLY
 from .opencode import PREFIX, OpenCodeGoClient
+from ..titles import generate_title
 
 
 def model_provider(model):
@@ -53,14 +55,12 @@ class ChatProviders:
         return levels(model) if levels else DEFAULT_ONLY
 
     async def suggest_title(self, model, messages, **options):
-        from ..titles import generate_title
         return await generate_title(self, model, messages, **options)
 
     def request_options(self, conversation, model):
         """Provider transport identity for one model; no hidden selection is consulted."""
         if model_provider(model) != 'opencode-go':
             return {}
-        from uuid import NAMESPACE_URL, uuid5
         identity = f'blackrose-bloom:{conversation.id}:{conversation.created_at.isoformat()}'
         return {'session_id': str(uuid5(NAMESPACE_URL, identity))}
 

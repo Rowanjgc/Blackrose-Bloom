@@ -17,7 +17,7 @@ from urllib.parse import urljoin
 def protect_desktop_bridge(window):
     """Register before webview.start; this application uses the GTK backend."""
     def install():
-        from gi.repository import WebKit2
+        from gi.repository import WebKit2  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
 
         browser = window.gui.BrowserView.instances[window.uid]
         manager = browser.manager

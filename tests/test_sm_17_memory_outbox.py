@@ -267,7 +267,7 @@ class OutboxStateTests(unittest.IsolatedAsyncioTestCase):
         conversation = await self.repo.create_conversation()
         await self.queue_turn(conversation, 'First preference.')
         await self.queue_turn(conversation, 'Second preference.')
-        with patch('blackrose.turns.typed_by_user', side_effect=RuntimeError('unexpected')):
+        with patch('blackrose.memory.typed_by_user', side_effect=RuntimeError('unexpected')):
             with self.assertRaises(RuntimeError):
                 await self.c._memory_outbox.drain()
         self.assertEqual([job['attempts'] for job in await self.repo.memory_jobs()], [1, 0])

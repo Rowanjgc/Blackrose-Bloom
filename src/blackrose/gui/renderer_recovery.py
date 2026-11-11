@@ -52,7 +52,7 @@ class RendererRecovery:
         if window is None:
             return False
         try:
-            from webview.platforms.gtk import BrowserView
+            from webview.platforms.gtk import BrowserView  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
 
             browser = BrowserView.instances.get(window.uid)
             if browser is None:
@@ -262,7 +262,7 @@ class RendererRecovery:
             return
         gtk = self._gtk
         if gtk is None:
-            from gi.repository import Gtk
+            from gi.repository import Gtk  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
 
             gtk = Gtk
         dialog = gtk.MessageDialog(

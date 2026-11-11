@@ -8,6 +8,7 @@ import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import BinaryIO
+import sys
 
 from . import __version__
 
@@ -17,7 +18,6 @@ def reply_diagnostics(state: str | None, *, conversation_id: int | None = None,
     """Shareable host metadata only; never accept free-form error/provider text."""
     if state not in ('error', 'cancelled', 'pending'):
         return None
-    import sys
 
     return '\n'.join([
         'Blackrose Bloom reply diagnostics',

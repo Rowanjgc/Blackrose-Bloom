@@ -22,6 +22,7 @@ from typing import Any
 from urllib.parse import unquote, urlsplit
 
 from ..outbound import ascii_host, visible
+from .consent import WIDER
 
 log = logging.getLogger(__name__)
 
@@ -103,7 +104,7 @@ def folder(path: Path) -> Handoff:
 
 def handler_for(handoff: Handoff) -> Handler | None:
     """The application the desktop would choose; it is the one shown and launched."""
-    from gi.repository import Gio
+    from gi.repository import Gio  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
 
     file_type = None
     if handoff.kind in ('link', 'email'):
@@ -181,7 +182,6 @@ def ask(window, title: str, message: str, button: str, *, warning: bool = False,
     ``choices`` lists several exact payloads, each with a checkbox, checked at first;
     accepting returns one bool per choice, and the dialog fallback accepts them all.
     """
-    from .consent import WIDER
     sheet = getattr(window, '_blackrose_consent', None)
     if sheet is not None and gtk is None:
         return sheet.ask(title, message, button, warning=warning, wider=wider,
@@ -195,7 +195,7 @@ def ask(window, title: str, message: str, button: str, *, warning: bool = False,
     message = '\n\n'.join(part for part in (message, f'{detail_label}:\n{detail}' if detail_label else detail,
                                              note) if part)
     if gtk is None or glib is None:
-        from gi.repository import GLib, Gtk
+        from gi.repository import GLib, Gtk  # noqa: PLC0415 - desktop-only GTK/WebKit binding, absent in offline CI
         gtk, glib = gtk or Gtk, glib or GLib
     answer: bool | str = False
     done = threading.Event()

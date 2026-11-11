@@ -36,6 +36,8 @@ from .config import (DEFAULT_SYSTEM_PROMPT, EVIDENCE_GUIDANCE, IMAGE_GUIDANCE,
 from .diagrams import MODEL_GUIDANCE as DIAGRAM_GUIDANCE, available as diagrams_available
 from .errors import InputRejected
 from .illustrations import CONTRACT, SKILL_ID, mentions_xiaohei, wants_plan_only
+from . import ui_documents
+from .library import LIBRARY_INSTRUCTIONS
 
 INTERACTIVE_UI_DISPOSITION = (
     'Answer shape: an interactive view is a normal reply option, not a special request. '
@@ -96,8 +98,7 @@ class DraftMessage:
 
 
 def _ui_contract(profile: str) -> str:
-    from .ui_documents import instructions
-    return '\n\n' + instructions(profile)
+    return '\n\n' + ui_documents.instructions(profile)
 
 
 @dataclass
@@ -173,7 +174,6 @@ class Prompt:
             self.ui_profile = None
 
     def enable_library_write(self) -> bool:
-        from .library import LIBRARY_INSTRUCTIONS
         if self.library_write_enabled:
             return False
         self.library_write_enabled = True
@@ -421,8 +421,7 @@ class PromptBuilder:
                     'and use ordinary Markdown. A separate application audit adds claim annotations. '
                     'Do not describe generated artifacts, images or files as audited.')
             if self.config.interactive_ui_enabled and self.config.citation_rigor == 'off':
-                from .ui_documents import available
-                if available():
+                if ui_documents.available():
                     instructions += '\n\n' + INTERACTIVE_UI_DISPOSITION
             memory_context = memory_block(self.memory_notes)
             if memory_context:

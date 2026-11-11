@@ -352,7 +352,7 @@ class OutboxTests(unittest.IsolatedAsyncioTestCase):
         user, assistant = await self.repo.begin_turn(conversation.id, 'Typed text', 'test-vision')
         await self.repo.finish_message(assistant.id, 'partial', MessageState.ERROR, remember=True)
         self.assertEqual(await self.repo.memory_jobs(), [])
-        with patch('blackrose.turns.typed_by_user', return_value=False):
+        with patch('blackrose.memory.typed_by_user', return_value=False):
             user, assistant = await self.repo.begin_turn(conversation.id, 'Form values', 'test-vision')
             await self.repo.finish_message(assistant.id, 'ok', MessageState.COMPLETE, remember=True)
             await self.c._memory_outbox.drain()

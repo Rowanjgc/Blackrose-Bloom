@@ -13,9 +13,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, cast
+import hashlib
 
 from .db import Database
 from .records import Conversation, MessageState, StoredAttachment, StoredMessage, TitleSource, UIBlock
+from ..diagrams import diagram_tokens, replace_diagram
+from ..citations import digest, unchecked_report
 
 DEFAULT_TITLE = "New conversation"
 _TITLE_MAX = 48
@@ -859,7 +862,6 @@ class Repository:
 
         def _finish(conn: sqlite3.Connection) -> StoredMessage:
             if audit is not None:
-                from ..citations import digest
                 if audit['body_hash'] != digest(content):
                     raise ValueError('Audit does not match the final answer')
                 conn.execute('INSERT OR REPLACE INTO message_audits VALUES (?, ?)',
@@ -964,7 +966,6 @@ class Repository:
         """
 
         def _reap(conn: sqlite3.Connection) -> int:
-            from ..citations import unchecked_report
             for row in conn.execute('SELECT a.message_id, a.report, m.content FROM message_audits a '
                                     'JOIN messages m ON m.id=a.message_id WHERE m.state="pending"').fetchall():
                 report = unchecked_report(json.loads(row['report']), row['content'],
@@ -1047,8 +1048,6 @@ class Repository:
 
     async def claim_diagram_repair(self, conversation_id, message_id, block_id, index, source, limit):
         """Claim before inference; keep the original answer and all other blocks intact."""
-        from ..diagrams import diagram_tokens
-        import hashlib
 
         def claim(conn):
             with conn:
@@ -1094,9 +1093,6 @@ class Repository:
         return await self._db.run(claim)
 
     async def finish_diagram_repair(self, claim, status, source=None):
-        from ..diagrams import replace_diagram
-        import hashlib
-
         def finish(conn):
             with conn:
                 row = conn.execute('SELECT payload FROM message_blocks WHERE block_id=? AND message_id=?',
@@ -1209,7 +1205,6 @@ class Repository:
             if row is None or row['role'] != 'assistant' or row['state'] != 'pending':
                 raise ValueError('Audit checkpoints require a pending assistant message')
             if content is not None:
-                from ..citations import digest
                 if report['body_hash'] != digest(content):
                     raise ValueError('Audit checkpoint does not match the draft')
                 conn.execute('UPDATE messages SET content=? WHERE id=?', (content, message_id))

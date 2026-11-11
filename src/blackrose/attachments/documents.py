@@ -305,7 +305,7 @@ def parse_pdf(data: bytes) -> tuple[str, int]:
     refused by name rather than attempted with an empty password: guessing at
     a password is not this function's business.
     """
-    from pypdf import PdfReader
+    from pypdf import PdfReader  # noqa: PLC0415 - pypdf and Pillow load only to read a PDF
 
     try:
         reader = PdfReader(io.BytesIO(data))
@@ -331,7 +331,7 @@ def _extract_docx(data: bytes) -> str:
     embedded objects are deliberately not followed: they are where a document
     hides content the user did not know they were sending.
     """
-    from lxml import etree
+    from lxml import etree  # noqa: PLC0415 - lxml loads only for XML-based documents
 
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
@@ -393,7 +393,7 @@ def _extract_text(data: bytes) -> str:
 
 def _decode_detected(data: bytes) -> str:
     """Second chance for a text file that is not UTF-8."""
-    import chardet
+    import chardet  # noqa: PLC0415 - encoding detection only for non-UTF-8 text
 
     guess = chardet.detect(data)
     encoding = guess.get("encoding") if guess else None

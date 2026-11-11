@@ -1,21 +1,21 @@
 """Render Markdown into real PDF bytes without HTML, network or subprocesses."""
 from html import escape
 import io
+from pathlib import Path
 
 from markdown_it import MarkdownIt
 
 
 def render_pdf(markdown):
-    from reportlab.lib import colors
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.lib import colors  # noqa: PLC0415 - reportlab loads only to render a PDF
+    from reportlab.lib.styles import getSampleStyleSheet  # noqa: PLC0415 - reportlab loads only to render a PDF
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle  # noqa: PLC0415 - reportlab loads only to render a PDF
 
     styles = getSampleStyleSheet()
     # Use the renderer's bundled Vera font for readable Latin text.
-    from reportlab import rl_config
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    from pathlib import Path
+    from reportlab import rl_config  # noqa: PLC0415 - reportlab loads only to render a PDF
+    from reportlab.pdfbase import pdfmetrics  # noqa: PLC0415 - reportlab loads only to render a PDF
+    from reportlab.pdfbase.ttfonts import TTFont  # noqa: PLC0415 - reportlab loads only to render a PDF
     font = next((Path(p) / 'Vera.ttf' for p in rl_config.TTFSearchPath
                  if (Path(p) / 'Vera.ttf').is_file()), None)
     if font:

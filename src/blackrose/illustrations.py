@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import unicodedata
+import shutil
 
 from jsonschema import Draft202012Validator
 
@@ -257,7 +258,6 @@ def plan_markdown(plan):
 
 def delete_conversation_drafts(store_root, conversation_id):
     """Conversation deletion also removes its private draft specifications."""
-    import shutil
     root = store_root / 'illustration-drafts' / str(int(conversation_id))
     if root.resolve() != store_root.resolve() / 'illustration-drafts' / str(int(conversation_id)):
         raise ValueError('Illustration draft path contains a symlink.')

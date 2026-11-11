@@ -230,7 +230,7 @@ class WorkspaceSelectionTests(unittest.IsolatedAsyncioTestCase):
             release.wait(5)
             return authorize_directory(path)
 
-        with patch('blackrose.workspace.authorize_directory', side_effect=authorize):
+        with patch('blackrose.chat.authorize_directory', side_effect=authorize):
             task = asyncio.create_task(c.set_workspace(str(work)))
             try:
                 self.assertTrue(await asyncio.to_thread(entered.wait, 5))
