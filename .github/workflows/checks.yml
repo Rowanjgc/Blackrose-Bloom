@@ -72,11 +72,11 @@ jobs:
       - run: npm run build --prefix diagram-runtime
       - run: npm run test:browser
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
+        if: failure()
         with:
           name: browser-review
           path: artifacts/browser
-          retention-days: 14
+          retention-days: 7
 
   webkit:
     runs-on: ubuntu-24.04
@@ -105,7 +105,7 @@ jobs:
       - run: npm run build --prefix diagram-runtime
       - run: xvfb-run -a dbus-run-session -- .venv/bin/python scripts/check_health.py --gui-only --report-dir artifacts/native
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
+        if: failure()
         with:
           name: native-review
           path: |
@@ -113,4 +113,4 @@ jobs:
             /tmp/motion-canvas-review
             /tmp/blackrose-*.png
             /tmp/blackrose-*.html
-          retention-days: 14
+          retention-days: 7
